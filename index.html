@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Swiss Terrain – Visibility & Shade Map</title>
+
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      display: flex;
+      height: 100vh;
+      font-family: system-ui, -apple-system, sans-serif;
+      font-size: 14px;
+      background: #f0f0f0;
+    }
+
+    /* ── Map ── */
+    #map { flex: 1; }
+
+    /* ── Side panel ── */
+    #panel {
+      width: 270px;
+      min-width: 270px;
+      background: #fff;
+      border-left: 1px solid #d1d5db;
+      display: flex;
+      flex-direction: column;
+      padding: 16px 14px;
+      gap: 14px;
+      overflow-y: auto;
+    }
+
+    h1 {
+      font-size: 15px;
+      font-weight: 700;
+      color: #111;
+      line-height: 1.3;
+    }
+    h1 small {
+      display: block;
+      font-size: 11px;
+      font-weight: 400;
+      color: #888;
+      margin-top: 2px;
+    }
+
+    /* Toggle rows */
+    .mode-toggle {
+      display: flex;
+      border: 1px solid #d1d5db;
+      border-radius: 7px;
+      overflow: hidden;
+    }
+    .mode-toggle button {
+      flex: 1;
+      padding: 7px 4px;
+      border: none;
+      background: #f9fafb;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 500;
+      color: #555;
+      transition: background 0.15s, color 0.15s;
+    }
+    .mode-toggle button.active {
+      background: #1d4ed8;
+      color: #fff;
+    }
+
+    /* Sections */
+    .section {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    label.field-label {
+      font-size: 11px;
+      font-weight: 600;
+      color: #6b7280;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .coord-box {
+      font-size: 12px;
+      font-family: monospace;
+      color: #374151;
+      background: #f3f4f6;
+      border-radius: 5px;
+      padding: 5px 8px;
+      min-height: 26px;
+    }
+
+    input[type="number"],
+    input[type="text"],
+    input[type="date"] {
+      width: 100%;
+      padding: 6px 8px;
+      border: 1px solid #d1d5db;
+      border-radius: 5px;
+      font-size: 13px;
+      color: #111;
+    }
+    input:focus { outline: 2px solid #93c5fd; border-color: #93c5fd; }
+    input[readonly] {
+      background: #f3f4f6;
+      color: #374151;
+      cursor: default;
+    }
+    input[readonly]:focus { outline: none; border-color: #d1d5db; }
+
+    .datetime-row { display: flex; gap: 8px; }
+    .datetime-row .field-date { flex: 1; }
+    .field-time {
+      flex: 1;
+      padding: 6px 8px;
+      border: 1px solid #d1d5db;
+      border-radius: 5px;
+      font-size: 13px;
+      color: #111;
+      text-align: center;
+      font-variant-numeric: tabular-nums;
+      cursor: ns-resize;
+      touch-action: none;
+      user-select: none;
+      background: #fff;
+    }
+    .field-time:focus { outline: 2px solid #93c5fd; border-color: #93c5fd; }
+
+    .hint {
+      font-size: 11px;
+      color: #9ca3af;
+      line-height: 1.4;
+    }
+
+    /* Buttons */
+    .btn {
+      padding: 8px 12px;
+      border: none;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.15s;
+    }
+    .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+    .btn-primary { background: #1d4ed8; color: #fff; }
+    .btn-primary:hover:not(:disabled) { background: #1e40af; }
+    .btn-danger  { background: #dc2626; color: #fff; }
+    .btn-danger:hover  { background: #b91c1c; }
+
+    /* Progress */
+    #progress-bar {
+      height: 4px;
+      background: #e5e7eb;
+      border-radius: 2px;
+      overflow: hidden;
+    }
+    #progress-fill {
+      height: 100%;
+      background: #1d4ed8;
+      width: 0%;
+      transition: width 0.25s;
+    }
+    #status {
+      font-size: 11px;
+      color: #6b7280;
+      line-height: 1.4;
+      min-height: 30px;
+    }
+
+    .tile-dl-status {
+      font-size: 11px;
+      color: #6b7280;
+    }
+    #tile-dl-progress-bar {
+      height: 4px;
+      background: #e5e7eb;
+      border-radius: 2px;
+      overflow: hidden;
+    }
+    #tile-dl-progress-fill {
+      height: 100%;
+      background: #1d4ed8;
+      width: 0%;
+      transition: width 0.25s;
+    }
+
+    /* Legend */
+    #legend { display: flex; flex-direction: column; gap: 5px; }
+    .legend-row {
+      display: none;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      color: #374151;
+    }
+    .legend-swatch {
+      width: 22px;
+      height: 13px;
+      border-radius: 3px;
+      border: 1px solid rgba(0,0,0,0.1);
+      flex-shrink: 0;
+    }
+
+    /* Footer */
+    #footer {
+      margin-top: auto;
+      font-size: 10px;
+      color: #b0b5be;
+      line-height: 1.5;
+    }
+    #footer a { color: #b0b5be; }
+
+    /* Mobile panel toggle (hidden on wide screens – panel is always visible there) */
+    #panel-toggle {
+      display: none;
+      position: fixed;
+      top: 10px;
+      right: 10px;
+      z-index: 1700;
+      width: 40px;
+      height: 40px;
+      border-radius: 8px;
+      border: none;
+      background: #fff;
+      box-shadow: 0 1px 5px rgba(0,0,0,0.4);
+      font-size: 18px;
+      line-height: 1;
+      cursor: pointer;
+    }
+    @media (max-width: 700px) {
+      #panel-toggle { display: block; }
+
+      /* Slides in over the map but never blocks it – the map stays fully
+         pannable/zoomable everywhere the panel itself isn't covering. */
+      #panel {
+        position: fixed;
+        top: 0;
+        right: 0;
+        height: 100%;
+        width: min(320px, 85vw);
+        z-index: 1500;
+        box-shadow: -2px 0 14px rgba(0,0,0,0.3);
+        transform: translateX(100%);
+        transition: transform 0.25s ease;
+      }
+      #panel.open { transform: translateX(0); }
+    }
+  </style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<button id="panel-toggle" onclick="togglePanel()" aria-label="Toggle panel">✕</button>
+
+<div id="panel" class="open">
+
+  <h1>Swiss Terrain Analysis</h1>
+
+  <!-- Persistent tile-download panel -->
+  <div class="section" id="tile-dl-panel">
+    <button class="btn btn-primary" id="btn-download-tiles" onclick="downloadElevationData()">
+      Download Elevation Data
+    </button>
+    <div id="tile-dl-progress-bar"><div id="tile-dl-progress-fill"></div></div>
+    <div class="tile-dl-status" id="tile-dl-status">Tiles cached: 0</div>
+    <p class="hint">Required once before running any analysis.</p>
+  </div>
+
+  <!-- Mode toggle -->
+  <div class="mode-toggle">
+    <button id="btn-visibility" class="active" onclick="setMode('visibility')">
+      Peak Visibility
+    </button>
+    <button id="btn-shadow" onclick="setMode('shadow')">
+      Shade Map
+    </button>
+  </div>
+
+  <!-- ── Visibility section ── -->
+  <div class="section" id="section-vis" style="display:flex">
+    <label class="field-label">1. Click the map, or pick a peak</label>
+    <div class="mode-toggle">
+      <button onclick="selectPreset('dufourspitze')">Dufourspitze</button>
+      <button onclick="selectPreset('matterhorn')">Matterhorn</button>
+      <button onclick="selectPreset('bachtel')">Bachtel</button>
+    </div>
+    <div class="coord-box" id="vis-coords">No peak selected</div>
+
+    <label class="field-label">Elevation (m) — auto-detected from DEM, +50 m buffer</label>
+    <input type="text" id="peak-elev" placeholder="Detected on compute" readonly>
+
+    <button class="btn btn-primary" id="btn-compute-vis"
+            onclick="computeViewshed()" disabled>
+      Compute Viewshed
+    </button>
+
+    <p class="hint">
+      Green overlay = locations from which the selected peak is visible, within 200 km.
+    </p>
+  </div>
+
+  <!-- ── Shadow section ── -->
+  <div class="section" id="section-shad" style="display:none">
+    <label class="field-label">Date &amp; Time (your local time)</label>
+    <div class="datetime-row">
+      <input type="date" id="shade-date" class="field-date">
+      <div id="shade-time" class="field-time" tabindex="0">--:--</div>
+    </div>
+    <p class="hint">Double-click/tap a field to reset it to now. Scroll or drag up/down on the time to adjust it.</p>
+
+    <button class="btn btn-primary" id="btn-compute-shad"
+            onclick="computeShadow()" disabled>
+      Compute Shade Map
+    </button>
+
+    <p class="hint">
+      Dark blue = terrain in shadow for the current map viewport.
+      Pan or zoom, then recompute to update.
+    </p>
+  </div>
+
+  <!-- Progress -->
+  <div class="section">
+    <div id="progress-bar"><div id="progress-fill"></div></div>
+    <div id="status">Select a mode above to begin.</div>
+    <button class="btn btn-danger" id="btn-cancel"
+            style="display:none" onclick="cancelComputation()">
+      Cancel
+    </button>
+  </div>
+
+  <!-- Legend -->
+  <div id="legend">
+    <label class="field-label">Legend</label>
+    <div class="legend-row" id="legend-vis">
+      <div class="legend-swatch" style="background:rgba(12,130,45,0.86)"></div>
+      <span>Peak visible from here</span>
+    </div>
+    <div class="legend-row" id="legend-shadow">
+      <div class="legend-swatch" style="background:rgba(20,20,60,0.55)"></div>
+      <span>In shadow</span>
+    </div>
+  </div>
+
+  <!-- Clear -->
+  <button class="btn btn-danger" onclick="clearOverlays()">
+    Clear Overlay
+  </button>
+
+  <div id="footer">
+    Elevation:
+    <a href="https://registry.opendata.aws/terrain-tiles/" target="_blank">Terrarium DEM</a>
+    (AWS Open Data) &middot;
+    Basemap: &copy; <a href="https://www.swisstopo.admin.ch" target="_blank">swisstopo</a>
+    / &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a>
+  </div>
+
+</div><!-- #panel -->
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/suncalc@1.9.0/suncalc.js"></script>
+<script src="terrain_app.js"></script>
+
+</body>
+</html>
