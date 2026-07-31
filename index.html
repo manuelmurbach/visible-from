@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Swiss Terrain – Visibility & Shade Map</title>
+  <title>Visible From</title>
 
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 
@@ -23,8 +23,8 @@
 
     /* ── Side panel ── */
     #panel {
-      width: 270px;
-      min-width: 270px;
+      width: 230px;
+      min-width: 230px;
       background: #fff;
       border-left: 1px solid #d1d5db;
       display: flex;
@@ -34,11 +34,19 @@
       overflow-y: auto;
     }
 
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .brand svg { flex-shrink: 0; }
+
     h1 {
-      font-size: 15px;
-      font-weight: 700;
+      font-size: 25px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
       color: #111;
-      line-height: 1.3;
+      line-height: 1.15;
     }
     h1 small {
       display: block;
@@ -97,8 +105,7 @@
     }
 
     input[type="number"],
-    input[type="text"],
-    input[type="date"] {
+    input[type="text"] {
       width: 100%;
       padding: 6px 8px;
       border: 1px solid #d1d5db;
@@ -114,23 +121,55 @@
     }
     input[readonly]:focus { outline: none; border-color: #d1d5db; }
 
-    .datetime-row { display: flex; gap: 8px; }
-    .datetime-row .field-date { flex: 1; }
-    .field-time {
-      flex: 1;
+    select {
+      width: 100%;
       padding: 6px 8px;
       border: 1px solid #d1d5db;
       border-radius: 5px;
       font-size: 13px;
       color: #111;
-      text-align: center;
-      font-variant-numeric: tabular-nums;
-      cursor: ns-resize;
-      touch-action: none;
-      user-select: none;
       background: #fff;
     }
-    .field-time:focus { outline: 2px solid #93c5fd; border-color: #93c5fd; }
+    select:focus { outline: 2px solid #93c5fd; border-color: #93c5fd; }
+
+    .datetime-stack { display: flex; flex-direction: column; gap: 6px; }
+
+    .wheel {
+      position: relative;
+      height: 32px;
+      display: flex;
+      align-items: center;
+      overflow-x: auto;
+      overflow-y: hidden;
+      scroll-snap-type: x mandatory;
+      -webkit-overflow-scrolling: touch;
+      touch-action: pan-x;
+      scrollbar-width: none;
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+      border-radius: 6px;
+      cursor: grab;
+      -webkit-mask-image: linear-gradient(to right, transparent, #000 18%, #000 82%, transparent);
+              mask-image: linear-gradient(to right, transparent, #000 18%, #000 82%, transparent);
+    }
+    .wheel::-webkit-scrollbar { display: none; }
+    .wheel.dragging { cursor: grabbing; scroll-snap-type: none; }
+    .wheel:focus { outline: none; }
+    .wheel:focus-visible { outline: 2px solid #93c5fd; outline-offset: 1px; }
+
+    .wheel-item {
+      flex: 0 0 auto;
+      scroll-snap-align: center;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      color: #b0b5be;
+      font-variant-numeric: tabular-nums;
+      user-select: none;
+      transition: color 0.1s;
+    }
+    .wheel-item.selected { color: #111; font-weight: 700; font-size: 13px; }
 
     .hint {
       font-size: 11px;
@@ -262,7 +301,25 @@
 
 <div id="panel" class="open">
 
-  <h1>Swiss Terrain Analysis</h1>
+  <div class="brand">
+    <svg width="34" height="34" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <defs>
+        <linearGradient id="logoBg" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stop-color="#3b82f6"/>
+          <stop offset="100%" stop-color="#1d4ed8"/>
+        </linearGradient>
+      </defs>
+      <rect width="32" height="32" rx="9" fill="url(#logoBg)"/>
+      <circle cx="22" cy="10" r="4" fill="#fbbf24"/>
+      <path d="M3 25 L12 11 L16.5 17 L21 9 L29 25 Z" fill="#eff6ff"/>
+      <path d="M3 25 L12 11 L16.5 17 L13.7 21 L9 25 Z" fill="#bfdbfe"/>
+      <g stroke="#fbbf24" stroke-width="1.4" stroke-linecap="round">
+        <path d="M12 11 L8.5 6.5"/>
+        <path d="M12 11 L4.5 8.5" stroke-dasharray="1.6 2.2"/>
+      </g>
+    </svg>
+    <h1>Visible From</h1>
+  </div>
 
   <!-- Persistent tile-download panel -->
   <div class="section" id="tile-dl-panel">
@@ -271,60 +328,58 @@
     </button>
     <div id="tile-dl-progress-bar"><div id="tile-dl-progress-fill"></div></div>
     <div class="tile-dl-status" id="tile-dl-status">Tiles cached: 0</div>
-    <p class="hint">Required once before running any analysis.</p>
+    <p class="hint">Required once before computing.</p>
   </div>
 
   <!-- Mode toggle -->
   <div class="mode-toggle">
     <button id="btn-visibility" class="active" onclick="setMode('visibility')">
-      Peak Visibility
+      <strong>Peak</strong> Visible From
     </button>
     <button id="btn-shadow" onclick="setMode('shadow')">
-      Shade Map
+      <strong>Sun</strong> Visible From
     </button>
   </div>
 
   <!-- ── Visibility section ── -->
   <div class="section" id="section-vis" style="display:flex">
-    <label class="field-label">1. Click the map, or pick a peak</label>
-    <div class="mode-toggle">
-      <button onclick="selectPreset('dufourspitze')">Dufourspitze</button>
-      <button onclick="selectPreset('matterhorn')">Matterhorn</button>
-      <button onclick="selectPreset('bachtel')">Bachtel</button>
-    </div>
+    <label class="field-label">Click the map, or pick a peak</label>
+    <select id="peak-select" onchange="selectPreset(this.value)">
+      <option value="" disabled selected>Choose a peak…</option>
+      <option value="dufourspitze">Dufourspitze</option>
+      <option value="matterhorn">Matterhorn</option>
+      <option value="bachtel">Bachtel</option>
+      <option value="montblanc">Mont Blanc</option>
+      <option value="todi">Tödi</option>
+      <option value="vrenelisgartli">Vrenelisgärtli</option>
+      <option value="uetliberg">Uetliberg</option>
+      <option value="pizbernina">Piz Bernina</option>
+      <option value="eiger">Eiger</option>
+    </select>
     <div class="coord-box" id="vis-coords">No peak selected</div>
 
-    <label class="field-label">Elevation (m) — auto-detected from DEM, +50 m buffer</label>
+    <label class="field-label">Elevation (m) - Autodetected</label>
     <input type="text" id="peak-elev" placeholder="Detected on compute" readonly>
 
     <button class="btn btn-primary" id="btn-compute-vis"
             onclick="computeViewshed()" disabled>
-      Compute Viewshed
+      Compute
     </button>
-
-    <p class="hint">
-      Green overlay = locations from which the selected peak is visible, within 200 km.
-    </p>
   </div>
 
   <!-- ── Shadow section ── -->
   <div class="section" id="section-shad" style="display:none">
     <label class="field-label">Date &amp; Time (your local time)</label>
-    <div class="datetime-row">
-      <input type="date" id="shade-date" class="field-date">
-      <div id="shade-time" class="field-time" tabindex="0">--:--</div>
+    <div class="datetime-stack">
+      <div class="wheel" id="date-wheel" tabindex="0"></div>
+      <div class="wheel" id="time-wheel" tabindex="0"></div>
     </div>
-    <p class="hint">Double-click/tap a field to reset it to now. Scroll or drag up/down on the time to adjust it.</p>
+    <p class="hint">Swipe, drag or scroll a wheel to change it. Double-tap/click to jump to now.</p>
 
     <button class="btn btn-primary" id="btn-compute-shad"
             onclick="computeShadow()" disabled>
-      Compute Shade Map
+      Compute
     </button>
-
-    <p class="hint">
-      Dark blue = terrain in shadow for the current map viewport.
-      Pan or zoom, then recompute to update.
-    </p>
   </div>
 
   <!-- Progress -->

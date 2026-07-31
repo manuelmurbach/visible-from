@@ -14,14 +14,20 @@ const TILE_CONCURRENCY = 12; // parallel tile fetches; compute is fast, loading 
 // shadowOutSize – longest edge of shadow overlay image (px)
 // ---------------------------------------------------------------------------
 const CONFIG = {
-    maxRangeKm: 200, subsample: 1, outSize: 2048, shadowStepM: 30, shadowOutSize: 1536,
+    maxRangeKm: 300, subsample: 1, outSize: 2048, shadowStepM: 30, shadowOutSize: 1536,
 };
 
 // Well-known peaks for one-click selection (lat, lon, official summit elevation in m)
 const PEAK_PRESETS = {
-    dufourspitze: { name: 'Dufourspitze', lat: 45.936833, lon: 7.867056, elev: 4634 },
-    matterhorn:   { name: 'Matterhorn',   lat: 45.976390, lon: 7.658610, elev: 4478 },
-    bachtel:      { name: 'Bachtel',      lat: 47.294720, lon: 8.886390, elev: 1115 },
+    dufourspitze:  { name: 'Dufourspitze',   lat: 45.936833, lon: 7.867056, elev: 4634 },
+    matterhorn:    { name: 'Matterhorn',     lat: 45.976390, lon: 7.658610, elev: 4478 },
+    bachtel:       { name: 'Bachtel',        lat: 47.294720, lon: 8.886390, elev: 1115 },
+    montblanc:     { name: 'Mont Blanc',     lat: 45.832620, lon: 6.865200, elev: 4805 },
+    todi:          { name: 'Tödi',           lat: 46.811380, lon: 8.914830, elev: 3614 },
+    vrenelisgartli:{ name: 'Vrenelisgärtli', lat: 47.007800, lon: 9.016980, elev: 2904 },
+    uetliberg:     { name: 'Uetliberg',      lat: 47.350000, lon: 8.491700, elev: 870 },
+    pizbernina:    { name: 'Piz Bernina',    lat: 46.380600, lon: 9.908100, elev: 4049 },
+    eiger:         { name: 'Eiger',          lat: 46.577500, lon: 8.005300, elev: 3967 },
 };
 
 // Switzerland's bounding box plus ~50 km padding on every side. Used both to
@@ -252,6 +258,7 @@ function setMode(mode) {
     document.getElementById('btn-shadow').classList.toggle('active', mode === 'shadow');
     document.getElementById('section-vis').style.display  = mode === 'visibility' ? 'flex' : 'none';
     document.getElementById('section-shad').style.display = mode === 'shadow'     ? 'flex' : 'none';
+    if (mode === 'shadow' && window.resyncDateTimeWheels) window.resyncDateTimeWheels();
 }
 window.setMode = setMode;
 
@@ -392,7 +399,7 @@ function clampToSwitzerland(range) {
 }
 
 // Viewshed tile range: a square of maxRangeKm around the peak, clipped to
-// Switzerland+padding (the nominal radius is 200 km, but anything beyond the
+// Switzerland+padding (the nominal radius is 300 km, but anything beyond the
 // pre-cached area is ignored rather than triggering new downloads).
 function getViewshedTileRange(lat, lon) {
     const rangeKm  = CONFIG.maxRangeKm;
@@ -683,32 +690,37 @@ function makeDarkOverlay(lBounds) {
 }
 
 // ---------------------------------------------------------------------------
-// Shade Map date/time controls – separate date + time fields, defaulting to
-// now. Date is a native picker (click to open, double-click/tap resets to
-// today). Time is a custom control: scroll wheel or vertical drag adjusts it
-// in 15-minute steps, double-click/tap resets it to the current time.
+// Shade Map date/time controls – two horizontal "wheel" strips (date above
+// time), swipe/drag/scroll to scrub, unbounded in both directions (crossing
+// midnight on the time wheel just keeps going, rolling the date with it).
+// The time wheel only ever shows daylight – night (before sunrise, after
+// sunset + SUNSET_BUFFER_MIN) is skipped entirely, so scrolling jumps
+// straight from dusk to the next dawn. Time is quantized to TIME_STEP_MIN;
+// "now" is always rounded up to the next step. 0.2s after either wheel stops
+// moving, the shade map is recomputed.
 // ---------------------------------------------------------------------------
 
-let selectedDateTime = new Date();
+const TIME_STEP_MIN      = 5;
+const TICK_MS             = TIME_STEP_MIN * 60000;
+const SUNSET_BUFFER_MIN   = 5;   // minutes of "dusk" kept visible past actual sunset
+const WHEEL_ITEM_WIDTH    = 48;  // px – must match .wheel-item width
+const WHEEL_SETTLE_MS     = 200; // idle time before a wheel is considered "at rest"
+
+const MONTH_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
 function pad2(n) { return String(n).padStart(2, '0'); }
-function formatDateInput(d) { return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`; }
-function formatTimeLabel(d) { return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`; }
 
-function renderDateTimeFields() {
-    document.getElementById('shade-date').value    = formatDateInput(selectedDateTime);
-    document.getElementById('shade-time').textContent = formatTimeLabel(selectedDateTime);
+function roundUpToStep(d, stepMin) {
+    const ms = stepMin * 60000;
+    return new Date(Math.ceil(d.getTime() / ms) * ms);
 }
+
+let selectedDateTime = roundUpToStep(new Date(), TIME_STEP_MIN);
 
 // Returns a copy – callers only read it, this keeps selectedDateTime as the
 // single mutable source of truth.
 function getSelectedDateTime() {
     return new Date(selectedDateTime);
-}
-
-function adjustSelectedTime(deltaMinutes) {
-    selectedDateTime = new Date(selectedDateTime.getTime() + deltaMinutes * 60000);
-    renderDateTimeFields();
 }
 
 function onDoubleTapOrClick(el, handler) {
@@ -721,67 +733,381 @@ function onDoubleTapOrClick(el, handler) {
     });
 }
 
-(function initDateTimeControls() {
-    renderDateTimeFields();
+// Calendar-day ticks (whole days), DST-safe via setDate() rather than raw
+// millisecond math. Shared by the date wheel and the sun-filtered time wheel.
+function addDays(d, n) { const r = new Date(d); r.setDate(r.getDate() + n); return r; }
+function dayStart(d)   { const r = new Date(d); r.setHours(0, 0, 0, 0); return r; }
+const dateEpoch = dayStart(new Date()); // day tick 0 = the day the app was opened
+function dateFromDayTick(t) { return addDays(dateEpoch, t); }
+function dayTickFromDate(d) { return Math.round((dayStart(d) - dateEpoch) / 86400000); }
 
-    const dateEl = document.getElementById('shade-date');
-    const timeEl = document.getElementById('shade-time');
+// A horizontally scrollable, snap-to-item picker over an unbounded integer
+// "tick" space. Only `windowSize` items are ever in the DOM at once; when the
+// live position drifts within `margin` items of either edge, the window is
+// silently rebuilt centred on the current tick (scroll position preserved,
+// so nothing visibly jumps) – this is what makes scrolling feel endless
+// without ever materializing more than a few hundred items.
+//
+// `onSettle(tick)` fires once, ~WHEEL_SETTLE_MS after scrolling stops. A
+// `goTo(tick, smooth, silent)` call marked `silent` (used when this wheel is
+// just cosmetically following a change made on the *other* wheel) is not
+// itself a value change, so its settle is swallowed entirely – it neither
+// re-fires onSettle nor cascades into syncing the other wheel again.
+function createInfiniteWheel(el, { formatTick, windowSize, margin, initialTick, onSettle }) {
+    let windowStart = 0;
+    let currentTick = initialTick;
+    let items = [];
+    let suppressUntil = 0;
 
-    // Date: native picker (click opens it, typing works) – just sync on change.
-    dateEl.addEventListener('input', () => {
-        const [y, m, d] = dateEl.value.split('-').map(Number);
-        if (!y || !m || !d) return;
-        selectedDateTime.setFullYear(y, m - 1, d);
-        renderDateTimeFields();
+    function build() {
+        el.innerHTML = '';
+        items = [];
+        for (let k = 0; k < windowSize; k++) {
+            const item = document.createElement('div');
+            item.className = 'wheel-item';
+            item.style.width = WHEEL_ITEM_WIDTH + 'px';
+            item.textContent = formatTick(windowStart + k);
+            el.appendChild(item);
+            items.push(item);
+        }
+    }
+
+    function syncPadding() {
+        const pad = Math.max(0, el.clientWidth / 2 - WHEEL_ITEM_WIDTH / 2);
+        el.style.paddingLeft = el.style.paddingRight = pad + 'px';
+    }
+    window.addEventListener('resize', syncPadding);
+
+    function localIndexAt(scrollLeft) { return Math.round(scrollLeft / WHEEL_ITEM_WIDTH); }
+
+    function highlight(localIdx) {
+        items.forEach((it, idx) => it.classList.toggle('selected', idx === localIdx));
+    }
+
+    function recenter(tick, smooth) {
+        windowStart = tick - Math.floor(windowSize / 2);
+        build();
+        syncPadding();
+        currentTick = tick;
+        el.scrollTo({ left: (tick - windowStart) * WHEEL_ITEM_WIDTH, behavior: smooth ? 'smooth' : 'instant' });
+        highlight(tick - windowStart);
+    }
+
+    // Repositions to `tick`. Set `silent` when this is cosmetic (the value
+    // didn't actually change – e.g. cross-wheel sync) so the settle this
+    // scroll triggers is swallowed instead of re-firing onSettle.
+    function goTo(tick, smooth, silent) {
+        if (silent) suppressUntil = Date.now() + WHEEL_SETTLE_MS + 100;
+        syncPadding();
+        const localIdx = tick - windowStart;
+        if (localIdx < margin || localIdx > windowSize - margin) {
+            recenter(tick, smooth);
+        } else {
+            currentTick = tick;
+            el.scrollTo({ left: localIdx * WHEEL_ITEM_WIDTH, behavior: smooth ? 'smooth' : 'instant' });
+            highlight(localIdx);
+        }
+    }
+
+    let settleTimer = null;
+    el.addEventListener('scroll', () => {
+        const localIdx = localIndexAt(el.scrollLeft);
+        highlight(localIdx);
+        clearTimeout(settleTimer);
+        settleTimer = setTimeout(() => {
+            const tick = windowStart + localIndexAt(el.scrollLeft);
+            currentTick = tick;
+            const li = tick - windowStart;
+            if (li < margin || li > windowSize - margin) recenter(tick, false);
+            if (Date.now() >= suppressUntil) onSettle(tick);
+        }, WHEEL_SETTLE_MS);
     });
-    onDoubleTapOrClick(dateEl, () => {
-        const now = new Date();
-        selectedDateTime.setFullYear(now.getFullYear(), now.getMonth(), now.getDate());
-        renderDateTimeFields();
-    });
 
-    // Time: reset to now on double-click/tap.
-    onDoubleTapOrClick(timeEl, () => {
-        const now = new Date();
-        selectedDateTime.setHours(now.getHours(), now.getMinutes(), 0, 0);
-        renderDateTimeFields();
-    });
-
-    const MIN_STEP = 15; // minutes per wheel notch / drag step
-
-    timeEl.addEventListener('wheel', (e) => {
+    // Desktop mouse wheel: vertical wheel motion scrubs the horizontal strip.
+    el.addEventListener('wheel', (e) => {
         e.preventDefault();
-        adjustSelectedTime(e.deltaY < 0 ? MIN_STEP : -MIN_STEP);
+        el.scrollLeft += Math.abs(e.deltaY) > Math.abs(e.deltaX) ? e.deltaY : e.deltaX;
     }, { passive: false });
 
-    // Drag (mouse or touch, via Pointer Events) vertically to scrub the time.
-    const PX_PER_STEP = 12;
-    let dragging = false;
-    let lastY = 0;
-    let accumPx = 0;
-
-    timeEl.addEventListener('pointerdown', (e) => {
+    // Mouse drag-to-scrub (touch/pen keep native momentum scrolling, which
+    // already handles swipe – only the mouse needs manual panning here).
+    let dragging = false, startX = 0, startScroll = 0;
+    el.addEventListener('pointerdown', (e) => {
+        if (e.pointerType !== 'mouse') return;
         dragging = true;
-        lastY = e.clientY;
-        accumPx = 0;
-        timeEl.setPointerCapture(e.pointerId);
+        startX = e.clientX;
+        startScroll = el.scrollLeft;
+        el.setPointerCapture(e.pointerId);
+        el.classList.add('dragging');
     });
-    timeEl.addEventListener('pointermove', (e) => {
+    el.addEventListener('pointermove', (e) => {
         if (!dragging) return;
-        accumPx += lastY - e.clientY; // dragging up = positive
-        lastY = e.clientY;
-        while (Math.abs(accumPx) >= PX_PER_STEP) {
-            const dir = accumPx > 0 ? 1 : -1;
-            adjustSelectedTime(dir * MIN_STEP);
-            accumPx -= dir * PX_PER_STEP;
+        el.scrollLeft = startScroll - (e.clientX - startX);
+    });
+    // The visual snap (goTo) happens immediately; onSettle – and whatever it
+    // triggers (recompute) – only fires once via the scroll listener above,
+    // WHEEL_SETTLE_MS after things actually stop moving.
+    function endDrag() {
+        if (!dragging) return;
+        dragging = false;
+        el.classList.remove('dragging');
+        const tick = windowStart + localIndexAt(el.scrollLeft);
+        goTo(tick, true);
+    }
+    el.addEventListener('pointerup', endDrag);
+    el.addEventListener('pointercancel', endDrag);
+
+    // Keyboard access (uses currentTick, not live scrollLeft, so key repeat
+    // steps reliably even while the previous smooth-scroll is still animating).
+    el.addEventListener('keydown', (e) => {
+        if (e.key === 'ArrowLeft')  { e.preventDefault(); goTo(currentTick - 1, true); }
+        if (e.key === 'ArrowRight') { e.preventDefault(); goTo(currentTick + 1, true); }
+    });
+
+    recenter(initialTick, false);
+
+    return { goTo };
+}
+
+// Like createInfiniteWheel, but for a sequence whose items aren't evenly
+// spaced (here: only daylight instants exist, so plain tick arithmetic
+// doesn't apply). Navigation happens purely through the caller-supplied
+// `stepForward`/`stepBackward` over opaque `pos` objects, and `posForDate`
+// resolves an arbitrary target Date to the nearest valid position – the same
+// windowed/self-recentring approach as createInfiniteWheel otherwise.
+function createSequenceWheel(el, { windowSize, margin, formatPos, stepForward, stepBackward, posForDate, initialPos, onSettle }) {
+    let windowPositions = [];
+    let currentLocalIndex = 0;
+    let items = [];
+    let suppressUntil = 0;
+
+    function buildWindowAround(pos) {
+        const half = Math.floor(windowSize / 2);
+        let p = pos;
+        for (let i = 0; i < half; i++) p = stepBackward(p);
+        const positions = [];
+        for (let i = 0; i < windowSize; i++) { positions.push(p); p = stepForward(p); }
+        return positions;
+    }
+
+    function build() {
+        el.innerHTML = '';
+        items = windowPositions.map(pos => {
+            const item = document.createElement('div');
+            item.className = 'wheel-item';
+            item.style.width = WHEEL_ITEM_WIDTH + 'px';
+            item.textContent = formatPos(pos);
+            el.appendChild(item);
+            return item;
+        });
+    }
+
+    function syncPadding() {
+        const pad = Math.max(0, el.clientWidth / 2 - WHEEL_ITEM_WIDTH / 2);
+        el.style.paddingLeft = el.style.paddingRight = pad + 'px';
+    }
+    window.addEventListener('resize', syncPadding);
+
+    function localIndexAt(scrollLeft) {
+        return Math.max(0, Math.min(windowSize - 1, Math.round(scrollLeft / WHEEL_ITEM_WIDTH)));
+    }
+
+    function highlight(idx) {
+        items.forEach((it, i) => it.classList.toggle('selected', i === idx));
+    }
+
+    function recenter(pos, smooth) {
+        windowPositions = buildWindowAround(pos);
+        currentLocalIndex = Math.floor(windowSize / 2);
+        build();
+        syncPadding();
+        el.scrollTo({ left: currentLocalIndex * WHEEL_ITEM_WIDTH, behavior: smooth ? 'smooth' : 'instant' });
+        highlight(currentLocalIndex);
+    }
+
+    function goToLocal(idx, smooth) {
+        if (idx < margin || idx > windowSize - margin) {
+            recenter(windowPositions[idx], smooth);
+        } else {
+            currentLocalIndex = idx;
+            el.scrollTo({ left: idx * WHEEL_ITEM_WIDTH, behavior: smooth ? 'smooth' : 'instant' });
+            highlight(idx);
+        }
+    }
+
+    // Repositions to the nearest valid item for `date`. `silent` marks this as
+    // cosmetic (the other wheel driving this one) so its settle is swallowed.
+    function goToDate(date, smooth, silent) {
+        if (silent) suppressUntil = Date.now() + WHEEL_SETTLE_MS + 100;
+        recenter(posForDate(date), smooth);
+    }
+
+    let settleTimer = null;
+    el.addEventListener('scroll', () => {
+        const idx = localIndexAt(el.scrollLeft);
+        highlight(idx);
+        clearTimeout(settleTimer);
+        settleTimer = setTimeout(() => {
+            const li = localIndexAt(el.scrollLeft);
+            currentLocalIndex = li;
+            if (li < margin || li > windowSize - margin) recenter(windowPositions[li], false);
+            if (Date.now() >= suppressUntil) onSettle(windowPositions[currentLocalIndex]);
+        }, WHEEL_SETTLE_MS);
+    });
+
+    el.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        el.scrollLeft += Math.abs(e.deltaY) > Math.abs(e.deltaX) ? e.deltaY : e.deltaX;
+    }, { passive: false });
+
+    let dragging = false, startX = 0, startScroll = 0;
+    el.addEventListener('pointerdown', (e) => {
+        if (e.pointerType !== 'mouse') return;
+        dragging = true;
+        startX = e.clientX;
+        startScroll = el.scrollLeft;
+        el.setPointerCapture(e.pointerId);
+        el.classList.add('dragging');
+    });
+    el.addEventListener('pointermove', (e) => {
+        if (!dragging) return;
+        el.scrollLeft = startScroll - (e.clientX - startX);
+    });
+    function endDrag() {
+        if (!dragging) return;
+        dragging = false;
+        el.classList.remove('dragging');
+        goToLocal(localIndexAt(el.scrollLeft), true);
+    }
+    el.addEventListener('pointerup', endDrag);
+    el.addEventListener('pointercancel', endDrag);
+
+    el.addEventListener('keydown', (e) => {
+        if (e.key === 'ArrowLeft')  { e.preventDefault(); goToLocal(Math.max(0, currentLocalIndex - 1), true); }
+        if (e.key === 'ArrowRight') { e.preventDefault(); goToLocal(Math.min(windowSize - 1, currentLocalIndex + 1), true); }
+    });
+
+    recenter(initialPos, false);
+
+    return { goToDate };
+}
+
+(function initDateTimeControls() {
+    const dateEl = document.getElementById('date-wheel');
+    const timeEl = document.getElementById('time-wheel');
+
+    function formatDateTick(t) { const d = dateFromDayTick(t); return MONTH_SHORT[d.getMonth()] + d.getDate(); }
+
+    // Sun-filtered day lists for the time wheel: for each calendar day, every
+    // 5-min-aligned instant within [sunrise, sunset + SUNSET_BUFFER_MIN] – the
+    // exact set of times the time wheel should ever show. Cached per day since
+    // it needs a SunCalc call + the map's current centre, not free to redo on
+    // every scroll tick. positions are {day, idx} into that day's list.
+    const dayListCache = new Map();
+    function sunDayList(dayTick) {
+        if (dayListCache.has(dayTick)) return dayListCache.get(dayTick);
+        const centre = map.getCenter();
+        // Local noon, not midnight: SunCalc buckets by the date's UTC calendar
+        // day, and local midnight in CET/CEST (UTC+1/+2) is still "yesterday"
+        // in UTC, which silently computed the wrong day's sunrise/sunset.
+        const dayNoon = new Date(dateFromDayTick(dayTick).getTime() + 12 * 3600000);
+        const times   = SunCalc.getTimes(dayNoon, centre.lat, centre.lng);
+        const list = [];
+        if (times.sunrise && times.sunset && !isNaN(times.sunrise) && !isNaN(times.sunset)) {
+            const end = new Date(times.sunset.getTime() + SUNSET_BUFFER_MIN * 60000);
+            for (let t = roundUpToStep(times.sunrise, TIME_STEP_MIN); t <= end; t = new Date(t.getTime() + TICK_MS)) {
+                list.push(t);
+            }
+        }
+        if (list.length === 0) list.push(roundUpToStep(dateFromDayTick(dayTick), TIME_STEP_MIN)); // guard; not expected at CH latitudes
+        dayListCache.set(dayTick, list);
+        return list;
+    }
+    function timeDateAt(pos) { return sunDayList(pos.day)[pos.idx]; }
+    function timeStepForward(pos) {
+        if (pos.idx + 1 < sunDayList(pos.day).length) return { day: pos.day, idx: pos.idx + 1 };
+        return { day: pos.day + 1, idx: 0 };
+    }
+    function timeStepBackward(pos) {
+        if (pos.idx - 1 >= 0) return { day: pos.day, idx: pos.idx - 1 };
+        const prevDay = pos.day - 1;
+        return { day: prevDay, idx: sunDayList(prevDay).length - 1 };
+    }
+    // Nearest valid (daylight) instant to an arbitrary target Date – used
+    // whenever a time might land in what's now a hidden night gap (e.g. the
+    // date wheel jumping to a day whose daylight window has shifted).
+    function timePosFor(target) {
+        const day = dayTickFromDate(target);
+        const list = sunDayList(day);
+        let best = { day, idx: 0 }, bestDiff = Math.abs(list[0] - target);
+        for (let i = 1; i < list.length; i++) {
+            const diff = Math.abs(list[i] - target);
+            if (diff < bestDiff) { bestDiff = diff; best = { day, idx: i }; }
+        }
+        if (target < list[0]) {
+            const prev = timeStepBackward({ day, idx: 0 });
+            if (Math.abs(timeDateAt(prev) - target) < bestDiff) return prev;
+        }
+        if (target > list[list.length - 1]) {
+            const next = timeStepForward({ day, idx: list.length - 1 });
+            if (Math.abs(timeDateAt(next) - target) < bestDiff) return next;
+        }
+        return best;
+    }
+
+    // selectedDateTime may currently be a night-time value (e.g. the raw
+    // "now rounded up" at page load) – snap it into the daylight window right
+    // away so both wheels' initial positions agree with the actual state.
+    selectedDateTime = timeDateAt(timePosFor(selectedDateTime));
+
+    const dateWheel = createInfiniteWheel(dateEl, {
+        formatTick: formatDateTick,
+        windowSize: 121, margin: 20,             // ~4 months in view, resyncs ~3 weeks before either edge
+        initialTick: dayTickFromDate(selectedDateTime),
+        onSettle: (t) => {
+            const picked = dateFromDayTick(t);
+            const candidate = new Date(selectedDateTime);
+            candidate.setFullYear(picked.getFullYear(), picked.getMonth(), picked.getDate());
+            selectedDateTime = timeDateAt(timePosFor(candidate)); // snap into daylight if needed
+            syncTimeWheelToSelected(true);
+            maybeAutoRecompute();
         }
     });
-    timeEl.addEventListener('pointerup',     () => { dragging = false; });
-    timeEl.addEventListener('pointercancel', () => { dragging = false; });
 
-    // Keyboard access for the custom time control.
-    timeEl.addEventListener('keydown', (e) => {
-        if (e.key === 'ArrowUp')   { e.preventDefault(); adjustSelectedTime(MIN_STEP); }
-        if (e.key === 'ArrowDown') { e.preventDefault(); adjustSelectedTime(-MIN_STEP); }
+    const timeWheel = createSequenceWheel(timeEl, {
+        windowSize: 600, margin: 150,            // ~4 days of daylight in view, resyncs ~1 day before either edge
+        formatPos: pos => { const d = timeDateAt(pos); return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`; },
+        stepForward: timeStepForward,
+        stepBackward: timeStepBackward,
+        posForDate: timePosFor,
+        initialPos: timePosFor(selectedDateTime),
+        onSettle: (pos) => {
+            selectedDateTime = timeDateAt(pos);
+            syncDateWheelToSelected(true);
+            maybeAutoRecompute();
+        }
     });
+
+    function syncDateWheelToSelected(silent) { dateWheel.goTo(dayTickFromDate(selectedDateTime), false, silent); }
+    function syncTimeWheelToSelected(silent) { timeWheel.goToDate(selectedDateTime, false, silent); }
+
+    function maybeAutoRecompute() {
+        if (currentMode === 'shadow' && tilesReady) computeShadow();
+    }
+
+    // The wheels are created while section-shad is display:none (0 width), so
+    // their padding/scroll position need fixing up the first time it's shown.
+    window.resyncDateTimeWheels = function() {
+        syncDateWheelToSelected(true);
+        syncTimeWheelToSelected(true);
+    };
+
+    function jumpToNow() {
+        selectedDateTime = timeDateAt(timePosFor(roundUpToStep(new Date(), TIME_STEP_MIN)));
+        syncDateWheelToSelected(true);
+        syncTimeWheelToSelected(true);
+        maybeAutoRecompute();
+    }
+    onDoubleTapOrClick(dateEl, jumpToNow);
+    onDoubleTapOrClick(timeEl, jumpToNow);
 })();
