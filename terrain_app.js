@@ -269,9 +269,7 @@ window.setMode = setMode;
 
 function togglePanel() {
     const isOpen = document.getElementById('panel').classList.toggle('open');
-    const btn = document.getElementById('panel-toggle');
-    btn.classList.toggle('open', isOpen);
-    btn.textContent = isOpen ? '>' : '<';
+    document.getElementById('panel-toggle').classList.toggle('open', isOpen);
 }
 window.togglePanel = togglePanel;
 

@@ -257,31 +257,38 @@
     #footer a { color: #b0b5be; }
 
     /* Mobile panel toggle: a small tab attached to the panel's left edge –
-       ">" when the panel is open (tab sits at the panel's edge), "<" once
-       collapsed (tab sits at the screen edge, ready to pull it back out). */
+       chevron points right while open (tab sits at the panel's edge), and
+       flips to point left once collapsed (tab sits at the screen edge,
+       ready to pull it back out). */
     #panel-toggle {
       display: none;
+      align-items: center;
+      justify-content: center;
       position: fixed;
-      top: 18px;
+      top: 20px;
       right: 0;
       z-index: 1700;
-      width: 26px;
-      height: 44px;
-      border-radius: 8px 0 0 8px;
+      width: 24px;
+      height: 48px;
+      border-radius: 10px 0 0 10px;
       border: none;
-      background: #1d4ed8;
-      color: #fff;
-      box-shadow: -1px 1px 6px rgba(0,0,0,0.3);
-      font-size: 15px;
-      font-weight: 700;
-      line-height: 1;
+      background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+      box-shadow: -2px 2px 8px rgba(0,0,0,0.28);
       cursor: pointer;
-      transition: right 0.25s ease;
+      transition: right 0.25s ease, box-shadow 0.15s ease;
     }
+    #panel-toggle:hover { box-shadow: -2px 2px 11px rgba(0,0,0,0.38); }
+    #panel-toggle svg {
+      width: 11px;
+      height: 11px;
+      color: #fff;
+      transition: transform 0.25s ease;
+    }
+    #panel-toggle.open svg { transform: rotate(180deg); }
     #panel-toggle.open { right: var(--panel-w); }
     @media (max-width: 700px) {
       :root { --panel-w: min(216px, 85vw); }
-      #panel-toggle { display: block; }
+      #panel-toggle { display: flex; }
 
       /* Slides in over the map but never blocks it – the map stays fully
          pannable/zoomable everywhere the panel itself isn't covering. */
@@ -305,7 +312,11 @@
 
 <div id="map"></div>
 
-<button id="panel-toggle" class="open" onclick="togglePanel()" aria-label="Toggle panel">&gt;</button>
+<button id="panel-toggle" class="open" onclick="togglePanel()" aria-label="Toggle panel">
+  <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M15 6l-6 6 6 6" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"/>
+  </svg>
+</button>
 
 <div id="panel" class="open">
 
