@@ -269,7 +269,9 @@ window.setMode = setMode;
 
 function togglePanel() {
     const isOpen = document.getElementById('panel').classList.toggle('open');
-    document.getElementById('panel-toggle').textContent = isOpen ? '✕' : '☰';
+    const btn = document.getElementById('panel-toggle');
+    btn.classList.toggle('open', isOpen);
+    btn.textContent = isOpen ? '>' : '<';
 }
 window.togglePanel = togglePanel;
 

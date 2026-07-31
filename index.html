@@ -23,13 +23,13 @@
 
     /* ── Side panel ── */
     #panel {
-      width: 230px;
-      min-width: 230px;
+      width: 216px;
+      min-width: 216px;
       background: #fff;
       border-left: 1px solid #d1d5db;
       display: flex;
       flex-direction: column;
-      padding: 16px 14px;
+      padding: 16px 10px;
       gap: 14px;
       overflow-y: auto;
     }
@@ -179,7 +179,7 @@
 
     /* Buttons */
     .btn {
-      padding: 8px 12px;
+      padding: 8px;
       border: none;
       border-radius: 6px;
       font-size: 13px;
@@ -256,24 +256,31 @@
     }
     #footer a { color: #b0b5be; }
 
-    /* Mobile panel toggle (hidden on wide screens – panel is always visible there) */
+    /* Mobile panel toggle: a small tab attached to the panel's left edge –
+       ">" when the panel is open (tab sits at the panel's edge), "<" once
+       collapsed (tab sits at the screen edge, ready to pull it back out). */
     #panel-toggle {
       display: none;
       position: fixed;
-      top: 10px;
-      right: 10px;
+      top: 18px;
+      right: 0;
       z-index: 1700;
-      width: 40px;
-      height: 40px;
-      border-radius: 8px;
+      width: 26px;
+      height: 44px;
+      border-radius: 8px 0 0 8px;
       border: none;
-      background: #fff;
-      box-shadow: 0 1px 5px rgba(0,0,0,0.4);
-      font-size: 18px;
+      background: #1d4ed8;
+      color: #fff;
+      box-shadow: -1px 1px 6px rgba(0,0,0,0.3);
+      font-size: 15px;
+      font-weight: 700;
       line-height: 1;
       cursor: pointer;
+      transition: right 0.25s ease;
     }
+    #panel-toggle.open { right: var(--panel-w); }
     @media (max-width: 700px) {
+      :root { --panel-w: min(216px, 85vw); }
       #panel-toggle { display: block; }
 
       /* Slides in over the map but never blocks it – the map stays fully
@@ -283,7 +290,8 @@
         top: 0;
         right: 0;
         height: 100%;
-        width: min(320px, 85vw);
+        width: var(--panel-w);
+        min-width: 0;
         z-index: 1500;
         box-shadow: -2px 0 14px rgba(0,0,0,0.3);
         transform: translateX(100%);
@@ -297,7 +305,7 @@
 
 <div id="map"></div>
 
-<button id="panel-toggle" onclick="togglePanel()" aria-label="Toggle panel">✕</button>
+<button id="panel-toggle" class="open" onclick="togglePanel()" aria-label="Toggle panel">&gt;</button>
 
 <div id="panel" class="open">
 
