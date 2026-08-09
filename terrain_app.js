@@ -6,15 +6,15 @@ const TILE_SIZE = 256;
 const TILE_CONCURRENCY = 12; // parallel tile fetches; compute is fast, loading is now the bottleneck
 
 // ---------------------------------------------------------------------------
-// Fixed analysis quality – always maximum.
+// Fixed analysis quality – always maximum, subject to the memory-safety cap
+// in chooseMosaicSubsample() (see loadMosaic above).
 // maxRangeKm  – viewshed radius (also limits tile loading area)
-// subsample   – DEM downsampling factor before sweep (1 = full native resolution)
 // outSize     – longest edge of the output overlay image (px)
 // shadowStepM – shadow ray step size (m); smaller = sharper shadows, slower
 // shadowOutSize – longest edge of shadow overlay image (px)
 // ---------------------------------------------------------------------------
 const CONFIG = {
-    maxRangeKm: 300, subsample: 1, outSize: 2048, shadowStepM: 30, shadowOutSize: 1536,
+    maxRangeKm: 300, outSize: 2048, shadowStepM: 30, shadowOutSize: 1536,
 };
 
 // Well-known peaks for one-click selection (lat, lon, official summit elevation in m)
@@ -83,7 +83,7 @@ function _latLonToTile(lat, lon) {
 // Shared elevation-tile cache – both Peak Visibility and Shade Map read/write
 // this same cache (they use the same DEM tile source, just different extents),
 // so a tile downloaded once for either mode is never re-fetched for the other.
-const tileCache = new Map(); // `${z}_${x}_${y}` -> Float32Array(256*256), in-memory only
+const tileCache = new Map(); // `${z}_${x}_${y}` -> Int16Array(256*256), in-memory only
 
 // Persistent, cross-reload tile cache backed by the browser's Cache Storage
 // API (the same storage Service Workers use – no SW registration needed to
@@ -99,19 +99,25 @@ function getPersistentCache() {
     return _persistentCachePromise;
 }
 
+// Elevations are stored as whole metres (Int16Array, not Float32Array) – half
+// the memory of the full-precision decode, and sub-metre precision doesn't
+// matter for line-of-sight/shadow math over the km-scale distances this app
+// deals with. This matters a lot here: the tile cache and compute mosaics
+// are large enough (see MAX_MOSAIC_CELLS below) that the factor-of-2 saving
+// is the difference between fitting in an iPhone Safari tab and not.
 function decodeTilePng(blob) {
     return createImageBitmap(blob).then(bitmap => {
         _decCtx.clearRect(0, 0, TILE_SIZE, TILE_SIZE);
         _decCtx.drawImage(bitmap, 0, 0);
         const { data } = _decCtx.getImageData(0, 0, TILE_SIZE, TILE_SIZE);
-        const elev = new Float32Array(TILE_SIZE * TILE_SIZE);
+        const elev = new Int16Array(TILE_SIZE * TILE_SIZE);
         for (let i = 0; i < elev.length; i++)
-            elev[i] = (data[i * 4] * 256 + data[i * 4 + 1] + data[i * 4 + 2] / 256) - 32768;
+            elev[i] = Math.round((data[i * 4] * 256 + data[i * 4 + 1] + data[i * 4 + 2] / 256) - 32768);
         return elev;
     });
 }
 
-// Load one DEM tile and return a Float32Array[256×256] of elevations.
+// Load one DEM tile and return an Int16Array[256×256] of elevations.
 // Serves from the in-memory cache first, then the persistent (cross-reload)
 // cache, and only hits the network if neither has it.
 async function loadTile(z, x, y) {
@@ -181,15 +187,47 @@ async function prefetchTiles(xtMin, xtMax, ytMin, ytMax, onProgress) {
     await Promise.all(Array.from({ length: workerCount }, worker));
 }
 
-// Load all tiles covering [xtMin..xtMax] × [ytMin..ytMax] and stitch into
-// a single Float32Array mosaic.  Calls onProgress(done, total) periodically.
+// A compute mosaic covering the whole of Switzerland+padding at native
+// resolution (subsample=1) is ~17000×14000 px – a ~460 MB Int16Array, built
+// fresh on *every* Compute click on top of the already-cached tiles. That
+// spike is what was crashing the app on iPhone shortly after pressing
+// Compute (Safari's per-tab memory limit is far below desktop). Since
+// maxRangeKm (300, needed for genuinely distant peaks like Mont Blanc) is
+// larger than Switzerland itself, almost every viewshed/shadow tile range
+// clamps to that near-full-country size, so this isn't an edge case – it's
+// the common case.
+//
+// The fix: never materialize the full-resolution mosaic at all. Pick a
+// downsample step (always a divisor of TILE_SIZE, so tile boundaries stay
+// pixel-aligned with no seams) that keeps the mosaic under a fixed cell
+// budget, and decimate straight from each decoded tile while compositing.
+// The final overlay image is capped at outSize/shadowOutSize px anyway
+// (≤2048), so a coarser compute grid for country-scale ranges is not
+// visible in the result – it only removes wasted memory.
+const MOSAIC_SUBSAMPLE_STEPS = [1, 2, 4, 8, 16, 32, 64]; // all divide TILE_SIZE evenly
+const MAX_MOSAIC_CELLS = 16_000_000; // ≈32 MB Int16 elev + ≈16 MB Uint8 visible – safe on mobile
+
+function chooseMosaicSubsample(cols, rows) {
+    const fullCells = cols * TILE_SIZE * rows * TILE_SIZE;
+    for (const step of MOSAIC_SUBSAMPLE_STEPS)
+        if (fullCells / (step * step) <= MAX_MOSAIC_CELLS) return step;
+    return MOSAIC_SUBSAMPLE_STEPS[MOSAIC_SUBSAMPLE_STEPS.length - 1];
+}
+
+// Load all tiles covering [xtMin..xtMax] × [ytMin..ytMax] and stitch into a
+// single Int16Array mosaic, downsampled (see chooseMosaicSubsample) so its
+// size never depends on how large the requested tile range is. Calls
+// onProgress(done, total) periodically. The returned `subsample` tells the
+// workers how many native DEM pixels each mosaic cell represents.
 async function loadMosaic(xtMin, xtMax, ytMin, ytMax, onProgress) {
     const cols = xtMax - xtMin + 1;
     const rows = ytMax - ytMin + 1;
-    const pw   = cols * TILE_SIZE;
-    const ph   = rows * TILE_SIZE;
+    const step = chooseMosaicSubsample(cols, rows);
+    const pw   = (cols * TILE_SIZE) / step;
+    const ph   = (rows * TILE_SIZE) / step;
+    const destTileSpan = TILE_SIZE / step;
 
-    const mosaic = new Float32Array(pw * ph); // zero = sea level fallback
+    const mosaic = new Int16Array(pw * ph); // zero = sea level fallback
 
     const tilesToLoad = [];
     for (let ty = ytMin; ty <= ytMax; ty++)
@@ -204,11 +242,20 @@ async function loadMosaic(xtMin, xtMax, ytMin, ytMax, onProgress) {
             const { tx, ty } = tilesToLoad[nextIdx++];
             const tileElev = await loadTile(ZOOM, tx, ty);
             if (tileElev) {
-                const colOff = (tx - xtMin) * TILE_SIZE;
-                const rowOff = (ty - ytMin) * TILE_SIZE;
-                for (let r = 0; r < TILE_SIZE; r++) {
-                    const mosaicRow = (rowOff + r) * pw + colOff;
-                    mosaic.set(tileElev.subarray(r * TILE_SIZE, (r + 1) * TILE_SIZE), mosaicRow);
+                const destColOff = ((tx - xtMin) * TILE_SIZE) / step;
+                const destRowOff = ((ty - ytMin) * TILE_SIZE) / step;
+                if (step === 1) {
+                    for (let r = 0; r < TILE_SIZE; r++) {
+                        const mosaicRow = (destRowOff + r) * pw + destColOff;
+                        mosaic.set(tileElev.subarray(r * TILE_SIZE, (r + 1) * TILE_SIZE), mosaicRow);
+                    }
+                } else {
+                    for (let r = 0; r < destTileSpan; r++) {
+                        const destBase = (destRowOff + r) * pw + destColOff;
+                        const srcRowBase = (r * step) * TILE_SIZE;
+                        for (let c = 0; c < destTileSpan; c++)
+                            mosaic[destBase + c] = tileElev[srcRowBase + c * step];
+                    }
                 }
             }
             done++;
@@ -219,7 +266,7 @@ async function loadMosaic(xtMin, xtMax, ytMin, ytMax, onProgress) {
     const workerCount = Math.min(TILE_CONCURRENCY, tilesToLoad.length);
     await Promise.all(Array.from({ length: workerCount }, fetchWorker));
 
-    return { elev: mosaic, pw, ph, xtMin, ytMin, xtMax, ytMax };
+    return { elev: mosaic, pw, ph, xtMin, ytMin, xtMax, ytMax, subsample: step };
 }
 
 // ---------------------------------------------------------------------------
@@ -247,6 +294,59 @@ const swisstopoLayer = L.tileLayer(
 swisstopoLayer.addTo(map);
 
 map.on('click', onMapClick);
+
+// ---------------------------------------------------------------------------
+// "My location" map control – sits below the zoom +/- buttons (same corner,
+// Leaflet stacks same-position controls automatically). Just centres the map
+// on the device's GPS position and drops a marker there; it doesn't select
+// a peak on its own – click the map (or the marker) afterwards for that.
+// ---------------------------------------------------------------------------
+
+let locationMarker = null;
+
+function locateMe() {
+    if (!navigator.geolocation) {
+        setStatus('Geolocation is not supported on this device.', 0);
+        return;
+    }
+    setStatus('Locating…', 0);
+    navigator.geolocation.getCurrentPosition(
+        (pos) => {
+            const { latitude: lat, longitude: lon } = pos.coords;
+            if (locationMarker) map.removeLayer(locationMarker);
+            locationMarker = L.circleMarker([lat, lon], {
+                radius: 8, color: '#fff', weight: 2, fillColor: '#1d4ed8', fillOpacity: 1
+            })
+                .addTo(map)
+                .bindPopup(`<b>Your location</b><br>${lat.toFixed(5)}°N, ${lon.toFixed(5)}°E`)
+                .openPopup();
+            map.setView([lat, lon], Math.max(map.getZoom(), 13));
+            setStatus('Located your position.', 0);
+        },
+        (err) => setStatus('Could not get your location: ' + err.message, 0),
+        { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+    );
+}
+
+const LocateControl = L.Control.extend({
+    options: { position: 'topleft' },
+    onAdd: function () {
+        const container = L.DomUtil.create('div', 'leaflet-bar leaflet-control');
+        const link = L.DomUtil.create('a', '', container);
+        link.href = '#';
+        link.title = 'Show my location';
+        link.setAttribute('role', 'button');
+        link.setAttribute('aria-label', 'Show my location');
+        link.innerHTML =
+            '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+            'stroke-width="2" stroke-linecap="round" style="vertical-align:middle"><circle cx="12" cy="12" r="3"/>' +
+            '<line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/>' +
+            '<line x1="2" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/></svg>';
+        L.DomEvent.on(link, 'click', L.DomEvent.stop).on(link, 'click', locateMe);
+        return container;
+    }
+});
+map.addControl(new LocateControl());
 
 // ---------------------------------------------------------------------------
 // Mode switching
@@ -561,7 +661,7 @@ async function computeViewshed() {
             elev: mosaic.elev.buffer, pw: mosaic.pw, ph: mosaic.ph,
             xtMin, ytMin, xtMax, ytMax,
             peakLat: lat, peakLon: lon,
-            subsample: cfg.subsample, outSize: cfg.outSize
+            subsample: mosaic.subsample, outSize: cfg.outSize
         },
         [mosaic.elev.buffer]
     );
@@ -666,7 +766,7 @@ async function computeShadow() {
     shadowWorker.postMessage(
         {
             elev: mosaic.elev.buffer, pw: mosaic.pw, ph: mosaic.ph,
-            xtMin, ytMin,
+            xtMin, ytMin, subsample: mosaic.subsample,
             sunAzimuthDeg: sunAzDeg, sunAltitudeDeg: sunAltDeg,
             viewBounds, shadowStepM: cfg.shadowStepM, shadowOutSize: cfg.shadowOutSize
         },

@@ -8,11 +8,11 @@ importScripts('dem_math.js');
 
 self.onmessage = function (e) {
     const {
-        elev: elevBuf, pw, ph, xtMin, ytMin,
+        elev: elevBuf, pw, ph, xtMin, ytMin, subsample,
         sunAzimuthDeg, sunAltitudeDeg,
         viewBounds, shadowStepM, shadowOutSize
     } = e.data;
-    const elev = new Float32Array(elevBuf);
+    const elev = new Int16Array(elevBuf);
 
     const post = (msg, pct) => {
         console.log(`[shadow] ${msg} (${Math.round(pct)}%)`);
@@ -54,7 +54,10 @@ self.onmessage = function (e) {
         }
 
         const centralLat = (viewBounds.lat_min + viewBounds.lat_max) / 2;
-        const pxM = pixelMetres(centralLat);
+        // `subsample` = native DEM pixels per mosaic cell (mosaic may be
+        // downsampled by loadMosaic() on the main thread to stay within a
+        // fixed memory budget) – scale pixel size to match.
+        const pxM = pixelMetres(centralLat) * subsample;
 
         // Sun direction in DEM pixel space
         const dCol  = Math.sin(sunAz) * STEP_M / pxM;
@@ -69,7 +72,9 @@ self.onmessage = function (e) {
             for (let oc = 0; oc < outW; oc++) {
                 const lon  = viewBounds.lon_min + (oc + 0.5) / outW * vLon;
                 const px   = latLonToMosaicPixel(lat, lon, xtMin, ytMin);
-                const col0 = px.col, row0 = px.row;
+                // latLonToMosaicPixel returns native-resolution coordinates;
+                // convert into the (possibly downsampled) mosaic's grid.
+                const col0 = px.col / subsample, row0 = px.row / subsample;
 
                 if (col0 < 0 || col0 >= pw || row0 < 0 || row0 >= ph) continue;
 

@@ -12,7 +12,7 @@ self.onmessage = function (e) {
         peakLat, peakLon,
         subsample, outSize
     } = e.data;
-    const elevIn = new Float32Array(elevBuf);
+    const elevIn = new Int16Array(elevBuf);
 
     const post = (msg, pct) => {
         console.log(`[viewshed] ${msg} (${Math.round(pct)}%)`);
@@ -23,10 +23,10 @@ self.onmessage = function (e) {
         console.log('[viewshed] started', { pwIn, phIn, subsample, outSize });
         post('Computing viewshed…', 0);
 
-        // -------------------------------------------------------------------
-        // 1. Optional downsampling
-        // -------------------------------------------------------------------
-        const { elev, pw, ph } = subsampleMosaic(elevIn, pwIn, phIn, subsample);
+        // The mosaic arrives already downsampled to `subsample` (native DEM
+        // pixels per mosaic cell) by loadMosaic() on the main thread – no
+        // further reduction needed here.
+        const elev = elevIn, pw = pwIn, ph = phIn;
 
         // -------------------------------------------------------------------
         // 2. Peak position & elevation in subsampled coords

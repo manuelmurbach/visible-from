@@ -59,18 +59,3 @@ function bilinear(elev, col, row, pw, ph) {
            elev[r1 * pw + c0] * (1 - fc) *      fr  +
            elev[r1 * pw + c1] *      fc  *      fr;
 }
-
-// ---------------------------------------------------------------------------
-// Mosaic downsampler – reduces pw/ph by `factor`, speeds up computation N²
-// ---------------------------------------------------------------------------
-
-function subsampleMosaic(elev, pw, ph, factor) {
-    if (factor <= 1) return { elev, pw, ph };
-    const nw = Math.floor(pw / factor);
-    const nh = Math.floor(ph / factor);
-    const sub = new Float32Array(nw * nh);
-    for (let r = 0; r < nh; r++)
-        for (let c = 0; c < nw; c++)
-            sub[r * nw + c] = elev[(r * factor) * pw + c * factor];
-    return { elev: sub, pw: nw, ph: nh };
-}
