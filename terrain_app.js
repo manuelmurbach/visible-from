@@ -1450,3 +1450,21 @@ function setLang(newLang) {
 window.setLang = setLang;
 
 applyTranslations();
+
+// ---------------------------------------------------------------------------
+// "Am I looking at the latest deploy?" indicator – fetches the latest commit
+// on GitHub at load time rather than baking a version number in at commit
+// time (there's no build step to do that reliably), so it can never drift
+// out of sync with what's actually live. Fails silently if the API is
+// unreachable/rate-limited – this is a nice-to-have, not core functionality.
+(async function showAppVersion() {
+    const el = document.getElementById('app-version');
+    if (!el) return;
+    try {
+        const resp = await fetch('https://api.github.com/repos/manuelmurbach/visible-from/commits/main');
+        if (!resp.ok) return;
+        const { sha } = await resp.json();
+        el.textContent = sha.slice(0, 7);
+        el.href = `https://github.com/manuelmurbach/visible-from/commit/${sha}`;
+    } catch (_) { /* offline or rate-limited – leave blank */ }
+})();

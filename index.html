@@ -48,9 +48,27 @@
     .brand-row svg { flex-shrink: 0; }
     .brand-row h1 { white-space: nowrap; }
 
+    .brand-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      align-self: flex-end;
+      gap: 6px;
+    }
+
+    /* Live commit SHA, fetched from GitHub at load time – see terrain_app.js.
+       Never baked in at "build" time (there is no build step), so it can
+       never drift out of sync with what's actually deployed. */
+    .app-version {
+      font-size: 10px;
+      font-family: monospace;
+      color: #b0b5be;
+      text-decoration: none;
+    }
+    .app-version:hover { text-decoration: underline; }
+
     .lang-toggle {
       display: flex;
-      align-self: flex-end;
       border: 1px solid #d1d5db;
       border-radius: 6px;
       overflow: hidden;
@@ -366,9 +384,12 @@
       </svg>
       <h1>Visible From</h1>
     </div>
-    <div class="lang-toggle" id="lang-toggle">
-      <button type="button" data-lang="de" onclick="setLang('de')">DE</button>
-      <button type="button" data-lang="en" onclick="setLang('en')">EN</button>
+    <div class="brand-toolbar">
+      <a id="app-version" class="app-version" href="https://github.com/manuelmurbach/visible-from/commits/main" target="_blank" rel="noopener"></a>
+      <div class="lang-toggle" id="lang-toggle">
+        <button type="button" data-lang="de" onclick="setLang('de')">DE</button>
+        <button type="button" data-lang="en" onclick="setLang('en')">EN</button>
+      </div>
     </div>
   </div>
 
