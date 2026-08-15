@@ -417,6 +417,18 @@ swisstopoLayer.addTo(map);
 
 map.on('click', onMapClick);
 
+// Auto-recompute the shadow map on pan/zoom in shadow mode, so the overlay
+// always matches the viewport without needing a manual re-click of Compute
+// (mirrors the existing auto-recompute when the date/time wheel settles).
+// Debounced so a burst of moveend events from a drag or a multi-step zoom
+// only triggers one recompute, once the view actually settles.
+let shadowRecomputeTimer = null;
+map.on('moveend', () => {
+    if (currentMode !== 'shadow' || !tilesReady) return;
+    clearTimeout(shadowRecomputeTimer);
+    shadowRecomputeTimer = setTimeout(computeShadow, 400);
+});
+
 // ---------------------------------------------------------------------------
 // "My location" map control – sits below the zoom +/- buttons (same corner,
 // Leaflet stacks same-position controls automatically). Just centres the map
