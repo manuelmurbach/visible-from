@@ -14,14 +14,17 @@ self.onmessage = function (e) {
     } = e.data;
     const elevIn = new Int16Array(elevBuf);
 
-    const post = (msg, pct) => {
-        console.log(`[viewshed] ${msg} (${Math.round(pct)}%)`);
-        self.postMessage({ type: 'progress', message: msg, percent: pct });
+    // Posts a translation key (not literal text) – the main thread renders
+    // it in whichever language is currently active, so a language switch
+    // mid-computation updates the visible status too, not just future ones.
+    const post = (key, pct) => {
+        console.log(`[viewshed] ${key} (${Math.round(pct)}%)`);
+        self.postMessage({ type: 'progress', key, percent: pct });
     };
 
     try {
         console.log('[viewshed] started', { pwIn, phIn, subsample, outSize });
-        post('Computing viewshed…', 0);
+        post('computingViewshed', 0);
 
         // The mosaic arrives already downsampled to `subsample` (native DEM
         // pixels per mosaic cell) by loadMosaic() on the main thread – no
@@ -103,10 +106,10 @@ self.onmessage = function (e) {
             }
 
             if ((ri & 0x3FF) === 0)
-                post('Computing viewshed…', (ri / N_RAYS) * 90);
+                post('computingViewshed', (ri / N_RAYS) * 90);
         }
 
-        post('Rendering overlay…', 92);
+        post('renderingOverlay', 92);
 
         // -------------------------------------------------------------------
         // 4. Render RGBA overlay (capped at outSize px per side)

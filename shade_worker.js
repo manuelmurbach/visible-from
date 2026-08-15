@@ -14,9 +14,10 @@ self.onmessage = function (e) {
     } = e.data;
     const elev = new Int16Array(elevBuf);
 
-    const post = (msg, pct) => {
-        console.log(`[shadow] ${msg} (${Math.round(pct)}%)`);
-        self.postMessage({ type: 'progress', message: msg, percent: pct });
+    // Posts a translation key (not literal text) – see viewshed_worker.js.
+    const post = (key, pct) => {
+        console.log(`[shadow] ${key} (${Math.round(pct)}%)`);
+        self.postMessage({ type: 'progress', key, percent: pct });
     };
 
     try {
@@ -27,7 +28,7 @@ self.onmessage = function (e) {
             return;
         }
 
-        post('Computing shadows…', 0);
+        post('computingShadows', 0);
 
         const sunAz  = sunAzimuthDeg  * Math.PI / 180;
         const sunAlt = sunAltitudeDeg * Math.PI / 180;
@@ -104,7 +105,7 @@ self.onmessage = function (e) {
             }
 
             if ((or & 0xF) === 0)
-                post('Computing shadows…', (or / outH) * 95);
+                post('computingShadows', (or / outH) * 95);
         }
 
         const bounds = {

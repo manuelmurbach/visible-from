@@ -37,10 +37,35 @@
 
     .brand {
       display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .brand-row {
+      display: flex;
       align-items: center;
       gap: 8px;
     }
-    .brand svg { flex-shrink: 0; }
+    .brand-row svg { flex-shrink: 0; }
+    .brand-row h1 { white-space: nowrap; }
+
+    .lang-toggle {
+      display: flex;
+      align-self: flex-end;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+      overflow: hidden;
+      flex-shrink: 0;
+    }
+    .lang-toggle button {
+      padding: 3px 7px;
+      border: none;
+      background: #f9fafb;
+      cursor: pointer;
+      font-size: 11px;
+      font-weight: 600;
+      color: #555;
+    }
+    .lang-toggle button.active { background: #1d4ed8; color: #fff; }
 
     h1 {
       font-size: 25px;
@@ -269,7 +294,7 @@
       top: 20px;
       right: 0;
       z-index: 1700;
-      width: 24px;
+      width: 34px;
       height: 48px;
       border-radius: 10px 0 0 10px;
       border: none;
@@ -322,23 +347,29 @@
 <div id="panel" class="open">
 
   <div class="brand">
-    <svg width="34" height="34" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-      <defs>
-        <linearGradient id="logoBg" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stop-color="#3b82f6"/>
-          <stop offset="100%" stop-color="#1d4ed8"/>
-        </linearGradient>
-      </defs>
-      <rect width="32" height="32" rx="9" fill="url(#logoBg)"/>
-      <circle cx="22" cy="10" r="4" fill="#fbbf24"/>
-      <path d="M3 25 L12 11 L16.5 17 L21 9 L29 25 Z" fill="#eff6ff"/>
-      <path d="M3 25 L12 11 L16.5 17 L13.7 21 L9 25 Z" fill="#bfdbfe"/>
-      <g stroke="#fbbf24" stroke-width="1.4" stroke-linecap="round">
-        <path d="M12 11 L8.5 6.5"/>
-        <path d="M12 11 L4.5 8.5" stroke-dasharray="1.6 2.2"/>
-      </g>
-    </svg>
-    <h1>Visible From</h1>
+    <div class="brand-row">
+      <svg width="34" height="34" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <defs>
+          <linearGradient id="logoBg" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stop-color="#3b82f6"/>
+            <stop offset="100%" stop-color="#1d4ed8"/>
+          </linearGradient>
+        </defs>
+        <rect width="32" height="32" rx="9" fill="url(#logoBg)"/>
+        <circle cx="22" cy="10" r="4" fill="#fbbf24"/>
+        <path d="M3 25 L12 11 L16.5 17 L21 9 L29 25 Z" fill="#eff6ff"/>
+        <path d="M3 25 L12 11 L16.5 17 L13.7 21 L9 25 Z" fill="#bfdbfe"/>
+        <g stroke="#fbbf24" stroke-width="1.4" stroke-linecap="round">
+          <path d="M12 11 L8.5 6.5"/>
+          <path d="M12 11 L4.5 8.5" stroke-dasharray="1.6 2.2"/>
+        </g>
+      </svg>
+      <h1>Visible From</h1>
+    </div>
+    <div class="lang-toggle" id="lang-toggle">
+      <button type="button" data-lang="de" onclick="setLang('de')">DE</button>
+      <button type="button" data-lang="en" onclick="setLang('en')">EN</button>
+    </div>
   </div>
 
   <!-- Persistent tile-download panel -->
@@ -348,7 +379,7 @@
     </button>
     <div id="tile-dl-progress-bar"><div id="tile-dl-progress-fill"></div></div>
     <div class="tile-dl-status" id="tile-dl-status">Tiles cached: 0</div>
-    <p class="hint">Required once before computing.</p>
+    <p class="hint" id="tile-dl-hint">Required once before computing (approx. 450 MB, 2 min).</p>
   </div>
 
   <!-- Mode toggle -->
@@ -363,9 +394,9 @@
 
   <!-- ── Visibility section ── -->
   <div class="section" id="section-vis" style="display:flex">
-    <label class="field-label">Click the map, or pick a peak</label>
+    <label class="field-label" id="label-pick-peak">Click the map, or pick a peak</label>
     <select id="peak-select" onchange="selectPreset(this.value)">
-      <option value="" disabled selected>Choose a peak…</option>
+      <option value="" disabled selected id="peak-select-placeholder">Choose a peak…</option>
       <option value="dufourspitze">Dufourspitze</option>
       <option value="matterhorn">Matterhorn</option>
       <option value="bachtel">Bachtel</option>
@@ -378,7 +409,7 @@
     </select>
     <div class="coord-box" id="vis-coords">No peak selected</div>
 
-    <label class="field-label">Elevation (m) - Autodetected</label>
+    <label class="field-label" id="label-elevation">Elevation (m) - Autodetected</label>
     <input type="text" id="peak-elev" placeholder="Detected on compute" readonly>
 
     <button class="btn btn-primary" id="btn-compute-vis"
@@ -389,12 +420,12 @@
 
   <!-- ── Shadow section ── -->
   <div class="section" id="section-shad" style="display:none">
-    <label class="field-label">Date &amp; Time (your local time)</label>
+    <label class="field-label" id="label-datetime">Date &amp; Time (your local time)</label>
     <div class="datetime-stack">
       <div class="wheel" id="date-wheel" tabindex="0"></div>
       <div class="wheel" id="time-wheel" tabindex="0"></div>
     </div>
-    <p class="hint">Swipe, drag or scroll a wheel to change it. Double-tap/click to jump to now.</p>
+    <p class="hint" id="wheel-hint">Swipe, drag or scroll a wheel to change it. Double-tap/click to jump to now.</p>
 
     <button class="btn btn-primary" id="btn-compute-shad"
             onclick="computeShadow()" disabled>
@@ -414,27 +445,27 @@
 
   <!-- Legend -->
   <div id="legend">
-    <label class="field-label">Legend</label>
+    <label class="field-label" id="label-legend">Legend</label>
     <div class="legend-row" id="legend-vis">
       <div class="legend-swatch" style="background:rgba(12,130,45,0.86)"></div>
-      <span>Peak visible from here</span>
+      <span id="legend-vis-text">Peak visible from here</span>
     </div>
     <div class="legend-row" id="legend-shadow">
       <div class="legend-swatch" style="background:rgba(20,20,60,0.55)"></div>
-      <span>In shadow</span>
+      <span id="legend-shadow-text">In shadow</span>
     </div>
   </div>
 
   <!-- Clear -->
-  <button class="btn btn-danger" onclick="clearOverlays()">
+  <button class="btn btn-danger" id="btn-clear-overlay" onclick="clearOverlays()">
     Clear Overlay
   </button>
 
   <div id="footer">
-    Elevation:
+    <span id="footer-elevation-label">Elevation:</span>
     <a href="https://registry.opendata.aws/terrain-tiles/" target="_blank">Terrarium DEM</a>
     (AWS Open Data) &middot;
-    Basemap: &copy; <a href="https://www.swisstopo.admin.ch" target="_blank">swisstopo</a>
+    <span id="footer-basemap-label">Basemap:</span> &copy; <a href="https://www.swisstopo.admin.ch" target="_blank">swisstopo</a>
     / &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a>
   </div>
 

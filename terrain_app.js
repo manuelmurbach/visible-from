@@ -1,5 +1,127 @@
 // terrain_app.js – main application logic
 
+// ---------------------------------------------------------------------------
+// i18n – all user-facing text lives here as {en, de}. Worker progress
+// messages are looked up by key too (see viewshed_worker.js/shade_worker.js,
+// which post a key rather than literal text), so switching language mid­
+// computation re-renders the current status correctly instead of only
+// affecting the next message.
+// ---------------------------------------------------------------------------
+const STRINGS = {
+    en: {
+        downloadTiles: 'Download Elevation Data',
+        tileDlHint: 'Required once before computing (approx. 450 MB, 2 min).',
+        tilesCached: 'Tiles cached: {count}',
+        downloadingTiles: 'Downloading {done}/{total}…',
+        modeVisibilityBold: 'Peak', modeVisibilitySuffix: ' Visible From',
+        modeShadowBold: 'Sun', modeShadowSuffix: ' Visible From',
+        pickPeakLabel: 'Click the map, or pick a peak',
+        choosePeak: 'Choose a peak…',
+        noPeakSelected: 'No peak selected',
+        elevationLabel: 'Elevation (m) - Autodetected',
+        detectedOnCompute: 'Detected on compute',
+        compute: 'Compute',
+        dateTimeLabel: 'Date & Time (your local time)',
+        wheelHint: 'Swipe, drag or scroll a wheel to change it. Double-tap/click to jump to now.',
+        idle: 'Select a mode above to begin.',
+        cancel: 'Cancel',
+        legend: 'Legend',
+        legendVis: 'Peak visible from here',
+        legendShadow: 'In shadow',
+        clearOverlay: 'Clear Overlay',
+        footerElevation: 'Elevation:',
+        footerBasemap: 'Basemap:',
+        panelToggle: 'Toggle panel',
+        showMyLocation: 'Show my location',
+        selectedPeakPopup: 'Selected peak',
+        yourLocationPopup: 'Your location',
+        lonSuffix: 'E',
+        startingViewshed: 'Starting viewshed…',
+        loadingTiles: 'Loading tiles {done}/{total}…',
+        errorLoadingTiles: 'Error loading tiles: {message}',
+        tilesLoadedComputingViewshed: 'Tiles loaded – computing viewshed…',
+        tilesLoadedComputingShadows: 'Tiles loaded – computing shadows…',
+        computingViewshed: 'Computing viewshed…',
+        renderingOverlay: 'Rendering overlay…',
+        computingShadows: 'Computing shadows…',
+        doneViewshed: 'Done. Peak elevation: {elev} m (auto-detected from DEM + 50 m buffer)',
+        doneShadow: 'Done. Sun: {az}° az, {alt}° alt',
+        sunLoadingTiles: 'Sun: {az}° az, {alt}° alt – loading tiles…',
+        sunBelowHorizon: 'Sun is below the horizon – everything is in shadow.',
+        workerError: 'Error: {message}',
+        workerFatalError: 'Worker error: {message} (see browser console F12)',
+        cancelled: 'Cancelled.',
+        overlaysCleared: 'Overlays cleared.',
+        locating: 'Locating…',
+        located: 'Located your position.',
+        locateError: 'Could not get your location: {message}',
+        geoUnsupported: 'Geolocation is not supported on this device.',
+    },
+    de: {
+        downloadTiles: 'Höhendaten herunterladen',
+        tileDlHint: 'Einmalig nötig vor der Berechnung (ca. 450 MB, 2 Min.).',
+        tilesCached: 'Kacheln zwischengespeichert: {count}',
+        downloadingTiles: 'Lade herunter {done}/{total}…',
+        modeVisibilityBold: 'Gipfel', modeVisibilitySuffix: ' sichtbar von',
+        modeShadowBold: 'Sonne', modeShadowSuffix: ' sichtbar von',
+        pickPeakLabel: 'Klicke auf die Karte oder wähle einen Gipfel',
+        choosePeak: 'Gipfel wählen…',
+        noPeakSelected: 'Kein Gipfel ausgewählt',
+        elevationLabel: 'Höhe (m) – automatisch erkannt',
+        detectedOnCompute: 'Wird bei Berechnung erkannt',
+        compute: 'Berechnen',
+        dateTimeLabel: 'Datum & Zeit (deine Ortszeit)',
+        wheelHint: 'Wische, ziehe oder scrolle an einem Rad, um es zu ändern. Doppeltippen/-klicken springt zu jetzt.',
+        idle: 'Wähle oben einen Modus, um zu beginnen.',
+        cancel: 'Abbrechen',
+        legend: 'Legende',
+        legendVis: 'Gipfel ist von hier sichtbar',
+        legendShadow: 'Im Schatten',
+        clearOverlay: 'Overlay löschen',
+        footerElevation: 'Höhe:',
+        footerBasemap: 'Kartenbasis:',
+        panelToggle: 'Bedienfeld ein-/ausblenden',
+        showMyLocation: 'Meinen Standort anzeigen',
+        selectedPeakPopup: 'Ausgewählter Gipfel',
+        yourLocationPopup: 'Dein Standort',
+        lonSuffix: 'O',
+        startingViewshed: 'Sichtbarkeitsberechnung wird gestartet…',
+        loadingTiles: 'Lade Kacheln {done}/{total}…',
+        errorLoadingTiles: 'Fehler beim Laden der Kacheln: {message}',
+        tilesLoadedComputingViewshed: 'Kacheln geladen – berechne Sichtbarkeit…',
+        tilesLoadedComputingShadows: 'Kacheln geladen – berechne Schatten…',
+        computingViewshed: 'Berechne Sichtbarkeit…',
+        renderingOverlay: 'Zeichne Overlay…',
+        computingShadows: 'Berechne Schatten…',
+        doneViewshed: 'Fertig. Gipfelhöhe: {elev} m (automatisch erkannt aus DEM + 50 m Puffer)',
+        doneShadow: 'Fertig. Sonne: {az}° Az, {alt}° Höhe',
+        sunLoadingTiles: 'Sonne: {az}° Az, {alt}° Höhe – lade Kacheln…',
+        sunBelowHorizon: 'Die Sonne steht unter dem Horizont – alles liegt im Schatten.',
+        workerError: 'Fehler: {message}',
+        workerFatalError: 'Worker-Fehler: {message} (siehe Browser-Konsole F12)',
+        cancelled: 'Abgebrochen.',
+        overlaysCleared: 'Overlay gelöscht.',
+        locating: 'Standort wird ermittelt…',
+        located: 'Standort gefunden.',
+        locateError: 'Standort konnte nicht ermittelt werden: {message}',
+        geoUnsupported: 'Geolokalisierung wird auf diesem Gerät nicht unterstützt.',
+    },
+};
+
+let lang = localStorage.getItem('vf_lang') ||
+    (navigator.language && navigator.language.toLowerCase().startsWith('de') ? 'de' : 'en');
+
+function t(key, params) {
+    let str = STRINGS[lang][key] ?? STRINGS.en[key] ?? key;
+    if (params) for (const k in params) str = str.replace(`{${k}}`, params[k]);
+    return str;
+}
+
+// Geographic coordinate formatting – German uses N/O (Nord/Ost), English N/E.
+function fmtCoord(lat, lon) {
+    return `${lat.toFixed(5)}° N, ${lon.toFixed(5)}° ${t('lonSuffix')}`;
+}
+
 const TILE_BASE_URL = 'cache/tiles';
 const ZOOM = 12; // must match ZOOM in dem_math.js
 const TILE_SIZE = 256;
@@ -306,10 +428,10 @@ let locationMarker = null;
 
 function locateMe() {
     if (!navigator.geolocation) {
-        setStatus('Geolocation is not supported on this device.', 0);
+        setStatus('geoUnsupported', null, 0);
         return;
     }
-    setStatus('Locating…', 0);
+    setStatus('locating', null, 0);
     navigator.geolocation.getCurrentPosition(
         (pos) => {
             const { latitude: lat, longitude: lon } = pos.coords;
@@ -318,15 +440,17 @@ function locateMe() {
                 radius: 8, color: '#fff', weight: 2, fillColor: '#1d4ed8', fillOpacity: 1
             })
                 .addTo(map)
-                .bindPopup(`<b>Your location</b><br>${lat.toFixed(5)}°N, ${lon.toFixed(5)}°E`)
+                .bindPopup(`<b>${t('yourLocationPopup')}</b><br>${fmtCoord(lat, lon)}`)
                 .openPopup();
             map.setView([lat, lon], Math.max(map.getZoom(), 13));
-            setStatus('Located your position.', 0);
+            setStatus('located', null, 0);
         },
-        (err) => setStatus('Could not get your location: ' + err.message, 0),
+        (err) => setStatus('locateError', { message: err.message }, 0),
         { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
     );
 }
+
+let locateControlLink = null;
 
 const LocateControl = L.Control.extend({
     options: { position: 'topleft' },
@@ -334,15 +458,14 @@ const LocateControl = L.Control.extend({
         const container = L.DomUtil.create('div', 'leaflet-bar leaflet-control');
         const link = L.DomUtil.create('a', '', container);
         link.href = '#';
-        link.title = 'Show my location';
         link.setAttribute('role', 'button');
-        link.setAttribute('aria-label', 'Show my location');
         link.innerHTML =
             '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
             'stroke-width="2" stroke-linecap="round" style="vertical-align:middle"><circle cx="12" cy="12" r="3"/>' +
             '<line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/>' +
             '<line x1="2" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/></svg>';
         L.DomEvent.on(link, 'click', L.DomEvent.stop).on(link, 'click', locateMe);
+        locateControlLink = link;
         return container;
     }
 });
@@ -386,7 +509,7 @@ function abandonInFlightViewshed() {
     vsToken++;
     if (viewshedWorker) { viewshedWorker.terminate(); viewshedWorker = null; }
     document.getElementById('btn-cancel').style.display = 'none';
-    if (wasRunning) setStatus('Select a mode above to begin.', 0);
+    if (wasRunning) setStatus('idle', null, 0);
 }
 
 function onMapClick(e) {
@@ -398,11 +521,10 @@ function onMapClick(e) {
     if (visMarker) map.removeLayer(visMarker);
     visMarker = L.marker([lat, lng])
         .addTo(map)
-        .bindPopup(`<b>Selected peak</b><br>${lat.toFixed(5)}°N, ${lng.toFixed(5)}°E`)
+        .bindPopup(`<b>${t('selectedPeakPopup')}</b><br>${fmtCoord(lat, lng)}`)
         .openPopup();
 
-    document.getElementById('vis-coords').textContent =
-        `${lat.toFixed(5)}° N,  ${lng.toFixed(5)}° E`;
+    document.getElementById('vis-coords').textContent = fmtCoord(lat, lng);
     document.getElementById('peak-elev').value = '';
     updateComputeButtonAvailability();
 }
@@ -421,11 +543,11 @@ function selectPreset(key) {
     if (visMarker) map.removeLayer(visMarker);
     visMarker = L.marker([peak.lat, peak.lon])
         .addTo(map)
-        .bindPopup(`<b>${peak.name}</b><br>${peak.lat.toFixed(5)}°N, ${peak.lon.toFixed(5)}°E, ${peak.elev} m`)
+        .bindPopup(`<b>${peak.name}</b><br>${fmtCoord(peak.lat, peak.lon)}, ${peak.elev} m`)
         .openPopup();
 
     document.getElementById('vis-coords').textContent =
-        `${peak.name} — ${peak.lat.toFixed(5)}° N,  ${peak.lon.toFixed(5)}° E`;
+        `${peak.name} — ${fmtCoord(peak.lat, peak.lon)}`;
     document.getElementById('peak-elev').value = '';
     updateComputeButtonAvailability();
 
@@ -437,8 +559,16 @@ window.selectPreset = selectPreset;
 // Status & progress
 // ---------------------------------------------------------------------------
 
-function setStatus(msg, pct) {
-    document.getElementById('status').textContent = msg;
+// Stores the last status shown (as a key+params, not the rendered string) so
+// applyTranslations() can re-render it correctly if the language is switched
+// mid-computation, instead of only affecting the *next* status message.
+let currentStatusKey = 'idle';
+let currentStatusParams = null;
+
+function setStatus(key, params, pct) {
+    currentStatusKey = key;
+    currentStatusParams = params;
+    document.getElementById('status').textContent = t(key, params);
     if (pct != null)
         document.getElementById('progress-fill').style.width = Math.round(pct) + '%';
 }
@@ -469,7 +599,7 @@ function cancelComputation() {
     if (shadowWorker)   { shadowWorker.terminate();   shadowWorker   = null; }
     updateComputeButtonAvailability();
     document.getElementById('btn-cancel').style.display  = 'none';
-    setStatus('Cancelled.', 0);
+    setStatus('cancelled', null, 0);
 }
 window.cancelComputation = cancelComputation;
 
@@ -477,7 +607,7 @@ function clearOverlays() {
     if (overlayLayer) { map.removeLayer(overlayLayer); overlayLayer = null; }
     document.getElementById('legend-vis').style.display    = 'none';
     document.getElementById('legend-shadow').style.display = 'none';
-    setStatus('Overlays cleared.', 0);
+    setStatus('overlaysCleared', null, 0);
 }
 window.clearOverlays = clearOverlays;
 
@@ -565,7 +695,7 @@ function getSwitzerlandTileRange() {
 
 function updateTileCacheLabel() {
     const el = document.getElementById('tile-dl-status');
-    if (el) el.textContent = `Tiles cached: ${tileCache.size}`;
+    if (el) el.textContent = t('tilesCached', { count: tileCache.size });
 }
 
 async function downloadElevationData() {
@@ -576,7 +706,7 @@ async function downloadElevationData() {
     document.getElementById('tile-dl-progress-fill').style.width = '0%';
 
     await prefetchTiles(range.xtMin, range.xtMax, range.ytMin, range.ytMax, (done, total) => {
-        document.getElementById('tile-dl-status').textContent = `Downloading ${done}/${total}…`;
+        document.getElementById('tile-dl-status').textContent = t('downloadingTiles', { done, total });
         document.getElementById('tile-dl-progress-fill').style.width = Math.round((done / total) * 100) + '%';
     });
 
@@ -584,6 +714,15 @@ async function downloadElevationData() {
     btn.disabled = false;
     tilesReady = true;
     updateComputeButtonAvailability();
+
+    // First-time onboarding: if the user hasn't picked a peak yet and is
+    // still on the default mode, show them a working example immediately
+    // instead of leaving them at an empty map wondering what to click.
+    if (currentMode === 'visibility' && !selectedPeak) {
+        document.getElementById('peak-select').value = 'dufourspitze';
+        selectPreset('dufourspitze');
+        computeViewshed();
+    }
 }
 window.downloadElevationData = downloadElevationData;
 
@@ -599,7 +738,7 @@ async function computeViewshed() {
     document.getElementById('btn-compute-vis').disabled = true;
     document.getElementById('legend-vis').style.display = 'flex';
     document.getElementById('btn-cancel').style.display = 'block';
-    setStatus('Starting viewshed…', 0);
+    setStatus('startingViewshed', null, 0);
 
     const cfg = CONFIG;
 
@@ -613,11 +752,11 @@ async function computeViewshed() {
     try {
         mosaic = await loadMosaic(xtMin, xtMax, ytMin, ytMax, (done, total) => {
             if (myToken !== vsToken) return; // superseded – ignore
-            setStatus(`Loading tiles ${done}/${total}…`, (done / total) * 30);
+            setStatus('loadingTiles', { done, total }, (done / total) * 30);
         });
     } catch (err) {
         if (myToken !== vsToken) return;
-        setStatus('Error loading tiles: ' + err.message, 0);
+        setStatus('errorLoadingTiles', { message: err.message }, 0);
         updateComputeButtonAvailability();
         document.getElementById('btn-cancel').style.display = 'none';
         return;
@@ -625,7 +764,7 @@ async function computeViewshed() {
 
     if (myToken !== vsToken) return; // a different peak was selected while tiles were loading
 
-    setStatus('Tiles loaded – computing viewshed…', 30);
+    setStatus('tilesLoadedComputingViewshed', null, 30);
 
     if (viewshedWorker) viewshedWorker.terminate();
     viewshedWorker = new Worker('viewshed_worker.js');
@@ -633,7 +772,7 @@ async function computeViewshed() {
     viewshedWorker.onerror = function (err) {
         if (myToken !== vsToken) return;
         console.error('[app] viewshed worker error:', err);
-        setStatus(`Worker error: ${err.message || err} (see browser console F12)`, 0);
+        setStatus('workerFatalError', { message: err.message || err }, 0);
         updateComputeButtonAvailability();
         document.getElementById('btn-cancel').style.display = 'none';
     };
@@ -642,15 +781,15 @@ async function computeViewshed() {
         if (myToken !== vsToken) return; // superseded – ignore stale result
         const d = e.data;
         if (d.type === 'progress') {
-            setStatus(d.message, 30 + d.percent * 0.7);
+            setStatus(d.key, null, 30 + d.percent * 0.7);
         } else if (d.type === 'result') {
             applyResult(d);
             document.getElementById('peak-elev').value = Math.round(d.peakElev);
-            setStatus(`Done. Peak elevation: ${Math.round(d.peakElev)} m (auto-detected from DEM + 50 m buffer)`, 100);
+            setStatus('doneViewshed', { elev: Math.round(d.peakElev) }, 100);
             updateComputeButtonAvailability();
             document.getElementById('btn-cancel').style.display = 'none';
         } else if (d.type === 'error') {
-            setStatus('Error: ' + d.message, 0);
+            setStatus('workerError', { message: d.message }, 0);
             updateComputeButtonAvailability();
             document.getElementById('btn-cancel').style.display = 'none';
         }
@@ -693,13 +832,13 @@ async function computeShadow() {
     if (sunAltDeg <= 0) {
         const bounds = map.getBounds();
         applyResult(makeDarkOverlay(bounds));
-        setStatus('Sun is below the horizon – everything is in shadow.', 100);
+        setStatus('sunBelowHorizon', null, 100);
         updateComputeButtonAvailability();
         document.getElementById('btn-cancel').style.display = 'none';
         return;
     }
 
-    setStatus(`Sun: ${sunAzDeg.toFixed(0)}° az, ${sunAltDeg.toFixed(1)}° alt – loading tiles…`, 0);
+    setStatus('sunLoadingTiles', { az: sunAzDeg.toFixed(0), alt: sunAltDeg.toFixed(1) }, 0);
 
     const cfg    = CONFIG;
     const bounds = map.getBounds();
@@ -716,11 +855,11 @@ async function computeShadow() {
     try {
         mosaic = await loadMosaic(xtMin, xtMax, ytMin, ytMax, (done, total) => {
             if (myToken !== shadowToken) return; // superseded – ignore
-            setStatus(`Loading tiles ${done}/${total}…`, (done / total) * 35);
+            setStatus('loadingTiles', { done, total }, (done / total) * 35);
         });
     } catch (err) {
         if (myToken !== shadowToken) return;
-        setStatus('Error loading tiles: ' + err.message, 0);
+        setStatus('errorLoadingTiles', { message: err.message }, 0);
         updateComputeButtonAvailability();
         document.getElementById('btn-cancel').style.display = 'none';
         return;
@@ -728,7 +867,7 @@ async function computeShadow() {
 
     if (myToken !== shadowToken) return; // cancelled/superseded while tiles were loading
 
-    setStatus('Tiles loaded – computing shadows…', 35);
+    setStatus('tilesLoadedComputingShadows', null, 35);
 
     if (shadowWorker) shadowWorker.terminate();
     shadowWorker = new Worker('shade_worker.js');
@@ -736,7 +875,7 @@ async function computeShadow() {
     shadowWorker.onerror = function (err) {
         if (myToken !== shadowToken) return;
         console.error('[app] shadow worker error:', err);
-        setStatus(`Worker error: ${err.message || err} (see browser console F12)`, 0);
+        setStatus('workerFatalError', { message: err.message || err }, 0);
         updateComputeButtonAvailability();
         document.getElementById('btn-cancel').style.display = 'none';
     };
@@ -745,19 +884,19 @@ async function computeShadow() {
         if (myToken !== shadowToken) return; // superseded – ignore stale result
         const d = e.data;
         if (d.type === 'progress') {
-            setStatus(d.message, 35 + d.percent * 0.65);
+            setStatus(d.key, null, 35 + d.percent * 0.65);
         } else if (d.type === 'result') {
             applyResult(d);
-            setStatus(`Done. Sun: ${sunAzDeg.toFixed(0)}° az, ${sunAltDeg.toFixed(1)}° alt`, 100);
+            setStatus('doneShadow', { az: sunAzDeg.toFixed(0), alt: sunAltDeg.toFixed(1) }, 100);
             updateComputeButtonAvailability();
             document.getElementById('btn-cancel').style.display = 'none';
         } else if (d.type === 'allDark') {
             applyResult(makeDarkOverlay(map.getBounds()));
-            setStatus('Sun below horizon – everything is in shadow.', 100);
+            setStatus('sunBelowHorizon', null, 100);
             updateComputeButtonAvailability();
             document.getElementById('btn-cancel').style.display = 'none';
         } else if (d.type === 'error') {
-            setStatus('Error: ' + d.message, 0);
+            setStatus('workerError', { message: d.message }, 0);
             updateComputeButtonAvailability();
             document.getElementById('btn-cancel').style.display = 'none';
         }
@@ -806,7 +945,10 @@ const SUNSET_BUFFER_MIN   = 5;   // minutes of "dusk" kept visible past actual s
 const WHEEL_ITEM_WIDTH    = 48;  // px – must match .wheel-item width
 const WHEEL_SETTLE_MS     = 200; // idle time before a wheel is considered "at rest"
 
-const MONTH_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const MONTHS_SHORT = {
+    en: ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'],
+    de: ['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'],
+};
 
 function pad2(n) { return String(n).padStart(2, '0'); }
 
@@ -966,7 +1108,13 @@ function createInfiniteWheel(el, { formatTick, windowSize, margin, initialTick, 
 
     recenter(initialTick, false);
 
-    return { goTo };
+    // Re-renders the currently-built items' labels in place (e.g. after a
+    // language switch changes month names) without touching scroll position.
+    function refresh() {
+        items.forEach((it, idx) => { it.textContent = formatTick(windowStart + idx); });
+    }
+
+    return { goTo, refresh };
 }
 
 // Like createInfiniteWheel, but for a sequence whose items aren't evenly
@@ -1089,14 +1237,18 @@ function createSequenceWheel(el, { windowSize, margin, formatPos, stepForward, s
 
     recenter(initialPos, false);
 
-    return { goToDate };
+    function refresh() {
+        items.forEach((it, idx) => { it.textContent = formatPos(windowPositions[idx]); });
+    }
+
+    return { goToDate, refresh };
 }
 
 (function initDateTimeControls() {
     const dateEl = document.getElementById('date-wheel');
     const timeEl = document.getElementById('time-wheel');
 
-    function formatDateTick(t) { const d = dateFromDayTick(t); return MONTH_SHORT[d.getMonth()] + d.getDate(); }
+    function formatDateTick(t) { const d = dateFromDayTick(t); return MONTHS_SHORT[lang][d.getMonth()] + d.getDate(); }
 
     // Sun-filtered day lists for the time wheel: for each calendar day, every
     // 5-min-aligned instant within [sunrise, sunset + SUNSET_BUFFER_MIN] – the
@@ -1202,6 +1354,13 @@ function createSequenceWheel(el, { windowSize, margin, formatPos, stepForward, s
         syncTimeWheelToSelected(true);
     };
 
+    // Called after a language switch to re-render already-built wheel item
+    // labels (month abbreviations) in place, without touching scroll position.
+    window.refreshDateTimeWheelLabels = function() {
+        dateWheel.refresh();
+        timeWheel.refresh();
+    };
+
     function jumpToNow() {
         selectedDateTime = timeDateAt(timePosFor(roundUpToStep(new Date(), TIME_STEP_MIN)));
         syncDateWheelToSelected(true);
@@ -1211,3 +1370,71 @@ function createSequenceWheel(el, { windowSize, margin, formatPos, stepForward, s
     onDoubleTapOrClick(dateEl, jumpToNow);
     onDoubleTapOrClick(timeEl, jumpToNow);
 })();
+
+// ---------------------------------------------------------------------------
+// Language switch – re-renders every static label, the current status
+// message, the date-wheel month names, and the map-control tooltips in the
+// active language. Runs once at load (after the IIFE above so the date-wheel
+// refresh hook exists) and again whenever the DE/EN toggle is clicked.
+// ---------------------------------------------------------------------------
+
+function applyTranslations() {
+    document.documentElement.lang = lang;
+
+    document.getElementById('btn-download-tiles').textContent = t('downloadTiles');
+    document.getElementById('tile-dl-hint').textContent = t('tileDlHint');
+    updateTileCacheLabel();
+
+    // German mode-button labels are long enough that a mid-phrase wrap looks
+    // awkward ("Gipfel sichtbar / von") – force the break right after the
+    // bold word instead. English fits fine with a natural wrap, so leave it.
+    const modeSep = lang === 'de' ? '<br>' : '';
+    document.getElementById('btn-visibility').innerHTML =
+        `<strong>${t('modeVisibilityBold')}</strong>${modeSep}${t('modeVisibilitySuffix')}`;
+    document.getElementById('btn-shadow').innerHTML =
+        `<strong>${t('modeShadowBold')}</strong>${modeSep}${t('modeShadowSuffix')}`;
+
+    document.getElementById('label-pick-peak').textContent = t('pickPeakLabel');
+    document.getElementById('peak-select-placeholder').textContent = t('choosePeak');
+    if (!selectedPeak) document.getElementById('vis-coords').textContent = t('noPeakSelected');
+    document.getElementById('label-elevation').textContent = t('elevationLabel');
+    document.getElementById('peak-elev').placeholder = t('detectedOnCompute');
+    document.getElementById('btn-compute-vis').textContent = t('compute');
+    document.getElementById('btn-compute-shad').textContent = t('compute');
+
+    document.getElementById('label-datetime').textContent = t('dateTimeLabel');
+    document.getElementById('wheel-hint').textContent = t('wheelHint');
+
+    document.getElementById('status').textContent = t(currentStatusKey, currentStatusParams);
+    document.getElementById('btn-cancel').textContent = t('cancel');
+
+    document.getElementById('label-legend').textContent = t('legend');
+    document.getElementById('legend-vis-text').textContent = t('legendVis');
+    document.getElementById('legend-shadow-text').textContent = t('legendShadow');
+
+    document.getElementById('btn-clear-overlay').textContent = t('clearOverlay');
+
+    document.getElementById('footer-elevation-label').textContent = t('footerElevation');
+    document.getElementById('footer-basemap-label').textContent = t('footerBasemap');
+
+    document.getElementById('panel-toggle').setAttribute('aria-label', t('panelToggle'));
+    if (locateControlLink) {
+        locateControlLink.title = t('showMyLocation');
+        locateControlLink.setAttribute('aria-label', t('showMyLocation'));
+    }
+
+    if (window.refreshDateTimeWheelLabels) window.refreshDateTimeWheelLabels();
+
+    document.querySelectorAll('#lang-toggle button').forEach(b => {
+        b.classList.toggle('active', b.dataset.lang === lang);
+    });
+}
+
+function setLang(newLang) {
+    lang = newLang;
+    localStorage.setItem('vf_lang', lang);
+    applyTranslations();
+}
+window.setLang = setLang;
+
+applyTranslations();
