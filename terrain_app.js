@@ -26,6 +26,7 @@ const STRINGS = {
         wheelHint: 'Swipe, drag or scroll a wheel to change it. Double-tap/click to jump to now.',
         idle: '',
         cancel: 'Cancel',
+        clearOverlay: 'Clear Overlay',
         legendVis: 'Peak visible from here',
         legendShadow: 'In shadow',
         footerElevation: 'Elevation:',
@@ -73,6 +74,7 @@ const STRINGS = {
         wheelHint: 'Wische, ziehe oder scrolle an einem Rad, um es zu ändern. Doppeltippen/-klicken springt zu jetzt.',
         idle: '',
         cancel: 'Abbrechen',
+        clearOverlay: 'Overlay löschen',
         legendVis: 'Gipfel ist von hier sichtbar',
         legendShadow: 'Im Schatten',
         footerElevation: 'Höhe:',
@@ -160,6 +162,15 @@ let visMarker       = null;
 let currentMode     = 'visibility';
 let viewshedWorker  = null;
 let shadowWorker    = null;
+
+// Set by the "Clear Overlay" button: once true, every *passive* auto-
+// recompute path (mode switch, pan/zoom in shadow mode) is skipped, so the
+// map stays genuinely clear instead of the overlay immediately reappearing
+// from whatever conditions were already true. Only cleared again by a
+// deliberate new trigger - picking a peak (map click or preset) or
+// scrubbing the date/time wheel - which is exactly the set of actions that
+// already meant "give me a fresh result" everywhere else in the app.
+let overlaySuppressed = false;
 
 // Nothing computes until the Switzerland-wide DEM tile download has
 // completed at least once – this guarantees a computation never triggers a
@@ -415,7 +426,7 @@ map.on('click', onMapClick);
 // only triggers one recompute, once the view actually settles.
 let shadowRecomputeTimer = null;
 map.on('moveend', () => {
-    if (currentMode !== 'shadow' || !tilesReady) return;
+    if (currentMode !== 'shadow' || !tilesReady || overlaySuppressed) return;
     clearTimeout(shadowRecomputeTimer);
     shadowRecomputeTimer = setTimeout(computeShadow, 400);
 });
@@ -541,7 +552,7 @@ function setMode(mode) {
     // auto-compute below).
     clearOverlay();
 
-    if (!tilesReady) return;
+    if (!tilesReady || overlaySuppressed) return;
     if (mode === 'visibility' && selectedPeak) computeViewshed();
     if (mode === 'shadow') computeShadow();
 }
@@ -579,6 +590,7 @@ function onMapClick(e) {
     const { lat, lng } = e.latlng;
     abandonInFlightViewshed();
     selectedPeak = { lat, lon: lng };
+    overlaySuppressed = false; // picking a new location is a deliberate new trigger
 
     if (visMarker) map.removeLayer(visMarker);
     visMarker = L.marker([lat, lng])
@@ -605,6 +617,7 @@ function selectPreset(key) {
 
     abandonInFlightViewshed();
     selectedPeak = { lat: peak.lat, lon: peak.lon };
+    overlaySuppressed = false; // picking a new location is a deliberate new trigger
 
     if (visMarker) map.removeLayer(visMarker);
     visMarker = L.marker([peak.lat, peak.lon])
@@ -676,10 +689,22 @@ window.cancelComputation = cancelComputation;
 
 // Used internally (by setMode when switching modes) so a stale overlay never
 // lingers on screen looking like it belongs to whichever mode is now active.
+// Does not touch overlaySuppressed - an internal cleanup isn't the user
+// asking to stay clear.
 function clearOverlay() {
     if (overlayLayer) { map.removeLayer(overlayLayer); overlayLayer = null; }
     hideMapLegend();
 }
+
+// Bound to the "Clear Overlay" button - this is the user explicitly asking
+// to stay clear, so unlike clearOverlay() it also suppresses further
+// passive auto-recompute until a new trigger (peak pick or date/time
+// change) explicitly resumes it.
+function clearOverlayManually() {
+    overlaySuppressed = true;
+    clearOverlay();
+}
+window.clearOverlayManually = clearOverlayManually;
 
 // ---------------------------------------------------------------------------
 // Tile-range calculations – shared between the actual computations and the
@@ -1431,7 +1456,10 @@ function createSequenceWheel(el, { windowSize, margin, formatPos, stepForward, s
     function syncTimeWheelToSelected(silent) { timeWheel.goToDate(selectedDateTime, false, silent); }
 
     function maybeAutoRecompute() {
-        if (currentMode === 'shadow' && tilesReady) computeShadow();
+        if (currentMode === 'shadow' && tilesReady) {
+            overlaySuppressed = false; // changing date/time is a deliberate new trigger
+            computeShadow();
+        }
     }
 
     // The wheels are created while section-shad is display:none (0 width), so
@@ -1494,6 +1522,7 @@ function applyTranslations() {
 
     document.getElementById('status').textContent = t(currentStatusKey, currentStatusParams);
     document.getElementById('btn-cancel').textContent = t('cancel');
+    document.getElementById('btn-clear-overlay').textContent = t('clearOverlay');
 
     if (currentLegendKind) showMapLegend(currentLegendKind);
 
