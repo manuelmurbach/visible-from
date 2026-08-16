@@ -1075,10 +1075,14 @@ function createInfiniteWheel(el, { formatTick, windowSize, margin, initialTick, 
         }, WHEEL_SETTLE_MS);
     });
 
-    // Desktop mouse wheel: vertical wheel motion scrubs the horizontal strip.
+    // Desktop mouse wheel: vertical wheel motion scrubs the horizontal strip,
+    // one item per wheel event regardless of the reported delta magnitude –
+    // a single notch of a physical scroll wheel commonly reports a deltaY of
+    // 100-150+, which against a 48px item was jumping 2-3 items per notch.
     el.addEventListener('wheel', (e) => {
         e.preventDefault();
-        el.scrollLeft += Math.abs(e.deltaY) > Math.abs(e.deltaX) ? e.deltaY : e.deltaX;
+        const delta = Math.abs(e.deltaY) > Math.abs(e.deltaX) ? e.deltaY : e.deltaX;
+        if (delta !== 0) el.scrollLeft += Math.sign(delta) * WHEEL_ITEM_WIDTH;
     }, { passive: false });
 
     // Mouse drag-to-scrub (touch/pen keep native momentum scrolling, which
@@ -1213,9 +1217,12 @@ function createSequenceWheel(el, { windowSize, margin, formatPos, stepForward, s
         }, WHEEL_SETTLE_MS);
     });
 
+    // One item per wheel event regardless of delta magnitude – see the
+    // matching comment in createInfiniteWheel above.
     el.addEventListener('wheel', (e) => {
         e.preventDefault();
-        el.scrollLeft += Math.abs(e.deltaY) > Math.abs(e.deltaX) ? e.deltaY : e.deltaX;
+        const delta = Math.abs(e.deltaY) > Math.abs(e.deltaX) ? e.deltaY : e.deltaX;
+        if (delta !== 0) el.scrollLeft += Math.sign(delta) * WHEEL_ITEM_WIDTH;
     }, { passive: false });
 
     let dragging = false, startX = 0, startScroll = 0;
@@ -1446,26 +1453,70 @@ function setLang(newLang) {
 window.setLang = setLang;
 
 // ---------------------------------------------------------------------------
-// First-visit onboarding – a callout pointing at "Download Elevation Data"
-// so new users know where to start. Shown once (localStorage flag), and
-// dismissed either explicitly (its own close button) or automatically once
-// they actually start the download.
+// Onboarding – a callout pointing at "Download Elevation Data" so new users
+// know where to start. Tied to whether the data is actually downloaded
+// (tilesReady), not a one-time "seen it" flag – every session starts with
+// nothing downloaded, so it should reappear on every reload until the
+// download actually completes, not just the very first time ever. The X
+// button (or starting the download) only dismisses it for the current
+// page view; it comes right back on the next reload if still not
+// downloaded, since the thing it's pointing at still needs doing.
 // ---------------------------------------------------------------------------
 
-const ONBOARDING_SEEN_KEY = 'vf_onboarding_seen';
+let onboardingDismissedThisSession = false;
 
 function dismissOnboarding() {
-    localStorage.setItem(ONBOARDING_SEEN_KEY, '1');
+    onboardingDismissedThisSession = true;
     const el = document.getElementById('onboarding-bubble');
     if (el) el.style.display = 'none';
 }
 window.dismissOnboarding = dismissOnboarding;
 
+// Positions the bubble (and its arrow) against the *actual* rendered
+// position of "Download Elevation Data", measured via getBoundingClientRect
+// rather than a guessed pixel offset – so the arrow genuinely points at the
+// button regardless of layout (desktop sidebar vs. mobile two-column row)
+// or window size. ARROW_TOP/ARROW_HALF mirror the CSS triangle's geometry.
+function positionOnboardingBubble() {
+    const bubble = document.getElementById('onboarding-bubble');
+    const btn = document.getElementById('btn-download-tiles');
+    const arrow = bubble ? bubble.querySelector('.onboarding-bubble-arrow') : null;
+    if (!bubble || !btn || !arrow || bubble.style.display === 'none') return;
+
+    const btnRect = btn.getBoundingClientRect();
+    const ARROW_HALF = 10;
+    const GAP = 14;
+
+    if (window.innerWidth <= 700) {
+        // Mobile: bubble sits above the bottom sheet, arrow points down at
+        // the button's horizontal centre.
+        bubble.style.top = 'auto';
+        bubble.style.right = '16px';
+        bubble.style.left = '16px';
+        const bubbleLeft = 16;
+        const arrowLeft = Math.max(16, Math.min(window.innerWidth - 48,
+            btnRect.left + btnRect.width / 2 - bubbleLeft - ARROW_HALF));
+        arrow.style.left = arrowLeft + 'px';
+    } else {
+        // Desktop: bubble sits left of the sidebar, arrow points right at
+        // the button's vertical centre.
+        const ARROW_TOP = 24; // matches .onboarding-bubble-arrow's CSS top
+        bubble.style.right = (window.innerWidth - btnRect.left + GAP) + 'px';
+        bubble.style.top = (btnRect.top + btnRect.height / 2 - ARROW_TOP - ARROW_HALF) + 'px';
+    }
+}
+
 function maybeShowOnboarding() {
-    if (localStorage.getItem(ONBOARDING_SEEN_KEY)) return;
+    if (tilesReady || onboardingDismissedThisSession) return;
     const el = document.getElementById('onboarding-bubble');
     if (el) el.style.display = 'block';
+    positionOnboardingBubble();
 }
+
+window.addEventListener('resize', () => {
+    const el = document.getElementById('onboarding-bubble');
+    if (el && el.style.display !== 'none') positionOnboardingBubble();
+});
 
 applyTranslations();
 maybeShowOnboarding();

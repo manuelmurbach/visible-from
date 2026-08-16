@@ -102,6 +102,14 @@
       margin-top: 2px;
     }
 
+    /* On mobile, the download button and mode toggle sit side by side (each
+       ~half width) so the essential controls fit in the very first row of
+       the short bottom sheet, always visible without scrolling. On desktop
+       display:contents makes this wrapper invisible to layout – its two
+       children just stack normally as direct children of #panel, same as
+       before this existed. */
+    .dl-and-mode-row { display: contents; }
+
     /* Toggle rows */
     .mode-toggle {
       display: flex;
@@ -278,42 +286,51 @@
        outside #panel in the DOM (see body markup) and uses position:fixed
        so it floats over the map instead of taking flow space in the menu,
        and isn't clipped by #panel's own overflow-y:auto scroll boundary.
+       top/right (desktop) or bottom/left (mobile) are set at runtime by
+       positionOnboardingBubble() in terrain_app.js, which measures the
+       actual button position via getBoundingClientRect() so the arrow
+       genuinely points at it instead of a guessed offset – the values
+       below are just an unpositioned-first-paint fallback. Semi-
+       transparent + blurred like a typical first-run coachmark, not a
+       solid opaque tooltip.
        Desktop: sits left of the sidebar, arrow pointing right at the button.
        Mobile (media query below): sits above the bottom sheet, arrow down. */
     .onboarding-bubble {
       position: fixed;
       top: 96px;
       right: 230px;
-      width: 220px;
+      width: 270px;
       z-index: 1800;
-      background: #1d4ed8;
+      background: rgba(29, 78, 216, 0.86);
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
       color: #fff;
-      padding: 10px 26px 10px 12px;
-      border-radius: 8px;
-      font-size: 12px;
+      padding: 16px 36px 16px 18px;
+      border-radius: 12px;
+      font-size: 14px;
       font-weight: 600;
-      line-height: 1.4;
-      box-shadow: 0 4px 14px rgba(29,78,216,0.35);
+      line-height: 1.5;
+      box-shadow: 0 10px 28px rgba(29,78,216,0.4);
       animation: onboarding-pop 0.3s ease;
     }
     .onboarding-bubble-arrow {
       position: absolute;
-      top: 18px;
-      right: -8px;
+      top: 24px;
+      right: -10px;
       width: 0;
       height: 0;
-      border-top: 8px solid transparent;
-      border-bottom: 8px solid transparent;
-      border-left: 8px solid #1d4ed8;
+      border-top: 10px solid transparent;
+      border-bottom: 10px solid transparent;
+      border-left: 10px solid rgba(29, 78, 216, 0.86);
     }
     .onboarding-bubble-close {
       position: absolute;
-      top: 2px;
-      right: 4px;
+      top: 4px;
+      right: 6px;
       background: none;
       border: none;
       color: rgba(255,255,255,0.8);
-      font-size: 18px;
+      font-size: 20px;
       line-height: 1;
       cursor: pointer;
       padding: 4px 6px;
@@ -334,12 +351,12 @@
       }
       .onboarding-bubble-arrow {
         top: auto;
-        bottom: -8px;
+        bottom: -10px;
         right: auto;
         left: 24px;
-        border-left: 8px solid transparent;
-        border-right: 8px solid transparent;
-        border-top: 8px solid #1d4ed8;
+        border-left: 10px solid transparent;
+        border-right: 10px solid transparent;
+        border-top: 10px solid rgba(29, 78, 216, 0.86);
         border-bottom: none;
       }
     }
@@ -419,7 +436,9 @@
     #panel-toggle.open svg { transform: rotate(270deg); }
     #panel-toggle.open { bottom: calc(var(--panel-h) + env(safe-area-inset-bottom, 0px)); }
     @media (max-width: 700px) {
-      :root { --panel-h: min(70vh, 560px); }
+      /* ~1/3 of the screen, so the map stays clearly visible above the
+         sheet rather than being mostly covered by it. */
+      :root { --panel-h: min(34vh, 300px); }
       #panel-toggle { display: flex; }
 
       /* Slides up from the bottom, full width, capped height with its own
@@ -442,6 +461,24 @@
         transition: transform 0.25s ease;
       }
       #panel.open { transform: translateY(0); }
+
+      /* Download button + mode toggle side by side (each ~half width) so
+         both are always visible in the very first row of the short sheet
+         without needing to scroll. */
+      .dl-and-mode-row {
+        display: flex;
+        flex-direction: row;
+        align-items: stretch;
+        gap: 10px;
+      }
+      .dl-and-mode-row > #tile-dl-panel,
+      .dl-and-mode-row > .mode-toggle {
+        flex: 1 1 50%;
+        min-width: 0;
+      }
+      /* .mode-toggle's own display:flex (row) is kept as-is here – Peak/Sun
+         stay side by side rather than stacking, even in the narrower half
+         width. */
     }
   </style>
 </head>
@@ -492,26 +529,28 @@
     </div>
   </div>
 
-  <!-- Persistent tile-download panel -->
-  <div class="section" id="tile-dl-panel">
-    <button class="btn btn-primary" id="btn-download-tiles" onclick="downloadElevationData()">
-      Download Elevation Data
-    </button>
-    <div id="tile-dl-progress-bar"><div id="tile-dl-progress-fill"></div></div>
-    <div class="tile-dl-status-row">
-      <span class="tile-dl-status" id="tile-dl-status">Tiles cached: 0</span>
-      <span id="tile-dl-check" class="tile-dl-check" style="display:none">✓</span>
+  <div class="dl-and-mode-row">
+    <!-- Persistent tile-download panel -->
+    <div class="section" id="tile-dl-panel">
+      <button class="btn btn-primary" id="btn-download-tiles" onclick="downloadElevationData()">
+        Download Elevation Data
+      </button>
+      <div id="tile-dl-progress-bar"><div id="tile-dl-progress-fill"></div></div>
+      <div class="tile-dl-status-row">
+        <span class="tile-dl-status" id="tile-dl-status">Tiles cached: 0</span>
+        <span id="tile-dl-check" class="tile-dl-check" style="display:none">✓</span>
+      </div>
     </div>
-  </div>
 
-  <!-- Mode toggle -->
-  <div class="mode-toggle">
-    <button id="btn-visibility" class="active" onclick="setMode('visibility')">
-      <strong>Peak</strong> Visible From
-    </button>
-    <button id="btn-shadow" onclick="setMode('shadow')">
-      <strong>Sun</strong> Visible From
-    </button>
+    <!-- Mode toggle -->
+    <div class="mode-toggle">
+      <button id="btn-visibility" class="active" onclick="setMode('visibility')">
+        <strong>Peak</strong> Visible From
+      </button>
+      <button id="btn-shadow" onclick="setMode('shadow')">
+        <strong>Sun</strong> Visible From
+      </button>
+    </div>
   </div>
 
   <!-- ── Visibility section ── -->
