@@ -20,13 +20,11 @@ const STRINGS = {
         pickPeakLabel: 'Click the map, or pick a peak',
         choosePeak: 'Choose a peak…',
         noPeakSelected: 'No peak selected',
-        elevationLabel: 'Elevation (m) - Autodetected',
-        detectedOnCompute: 'Detected on compute',
+        detectedOnCompute: 'Elevation…',
         dateTimeLabel: 'Date & Time (your local time)',
         wheelHint: 'Swipe, drag or scroll a wheel to change it. Double-tap/click to jump to now.',
-        idle: 'Select a mode above to begin.',
+        idle: '',
         cancel: 'Cancel',
-        legend: 'Legend',
         legendVis: 'Peak visible from here',
         legendShadow: 'In shadow',
         footerElevation: 'Elevation:',
@@ -57,7 +55,7 @@ const STRINGS = {
         geoUnsupported: 'Geolocation is not supported on this device.',
     },
     de: {
-        downloadTiles: 'Höhendaten herunterladen',
+        downloadTiles: 'Höhendaten laden',
         onboardingBubble: 'Starte mit dem Herunterladen der Höhendaten – nur einmalig nötig (ca. 450 MB, 2 Min.).',
         closeLabel: 'Schliessen',
         tilesReadyLabel: 'Bereit',
@@ -68,13 +66,11 @@ const STRINGS = {
         pickPeakLabel: 'Klicke auf die Karte oder wähle einen Gipfel',
         choosePeak: 'Gipfel wählen…',
         noPeakSelected: 'Kein Gipfel ausgewählt',
-        elevationLabel: 'Höhe (m) – automatisch erkannt',
-        detectedOnCompute: 'Wird bei Berechnung erkannt',
+        detectedOnCompute: 'Höhe…',
         dateTimeLabel: 'Datum & Zeit (deine Ortszeit)',
         wheelHint: 'Wische, ziehe oder scrolle an einem Rad, um es zu ändern. Doppeltippen/-klicken springt zu jetzt.',
-        idle: 'Wähle oben einen Modus, um zu beginnen.',
+        idle: '',
         cancel: 'Abbrechen',
-        legend: 'Legende',
         legendVis: 'Gipfel ist von hier sichtbar',
         legendShadow: 'Im Schatten',
         footerElevation: 'Höhe:',
@@ -477,6 +473,45 @@ const LocateControl = L.Control.extend({
 map.addControl(new LocateControl());
 
 // ---------------------------------------------------------------------------
+// Legend – a Leaflet control over the map's top-right corner instead of a
+// sidebar section, so it sits right next to the overlay it describes
+// regardless of panel/sheet state. pointer-events:none (see CSS) keeps it
+// from intercepting map clicks.
+// ---------------------------------------------------------------------------
+
+let mapLegendEl = null;
+let currentLegendKind = null; // 'vis' | 'shadow' | null, for re-translating on language switch
+
+const LEGEND_SWATCH = {
+    vis: 'rgba(12,130,45,0.86)',
+    shadow: 'rgba(20,20,60,0.55)',
+};
+
+const MapLegendControl = L.Control.extend({
+    options: { position: 'topright' },
+    onAdd: function () {
+        const el = L.DomUtil.create('div', 'map-legend');
+        el.innerHTML = '<span class="map-legend-swatch"></span><span class="map-legend-text"></span>';
+        mapLegendEl = el;
+        return el;
+    }
+});
+map.addControl(new MapLegendControl());
+
+function showMapLegend(kind) {
+    currentLegendKind = kind;
+    if (!mapLegendEl) return;
+    mapLegendEl.querySelector('.map-legend-swatch').style.background = LEGEND_SWATCH[kind];
+    mapLegendEl.querySelector('.map-legend-text').textContent = t(kind === 'vis' ? 'legendVis' : 'legendShadow');
+    mapLegendEl.style.display = 'flex';
+}
+
+function hideMapLegend() {
+    currentLegendKind = null;
+    if (mapLegendEl) mapLegendEl.style.display = 'none';
+}
+
+// ---------------------------------------------------------------------------
 // Mode switching
 // ---------------------------------------------------------------------------
 
@@ -584,8 +619,14 @@ function setStatus(key, params, pct) {
     currentStatusKey = key;
     currentStatusParams = params;
     document.getElementById('status').textContent = t(key, params);
-    if (pct != null)
-        document.getElementById('progress-fill').style.width = Math.round(pct) + '%';
+    if (pct != null) {
+        const fill = document.getElementById('top-progress-fill');
+        fill.style.width = Math.round(pct) + '%';
+        // Briefly show the completed bar, then fade it back to empty rather
+        // than leaving a stale full-width bar sitting at the top forever.
+        clearTimeout(setStatus._resetTimer);
+        if (pct >= 100) setStatus._resetTimer = setTimeout(() => { fill.style.width = '0%'; }, 400);
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -621,8 +662,7 @@ window.cancelComputation = cancelComputation;
 // lingers on screen looking like it belongs to whichever mode is now active.
 function clearOverlay() {
     if (overlayLayer) { map.removeLayer(overlayLayer); overlayLayer = null; }
-    document.getElementById('legend-vis').style.display    = 'none';
-    document.getElementById('legend-shadow').style.display = 'none';
+    hideMapLegend();
 }
 
 // ---------------------------------------------------------------------------
@@ -718,16 +758,20 @@ async function downloadElevationData() {
     dismissOnboarding();
     const range = getSwitzerlandTileRange();
 
+    // The button itself doubles as the progress bar (see #btn-download-tiles
+    // CSS) via a gradient driven by this custom property, instead of a
+    // separate progress-bar element – saves a row of height.
     const btn = document.getElementById('btn-download-tiles');
     btn.disabled = true;
-    document.getElementById('tile-dl-progress-fill').style.width = '0%';
+    btn.style.setProperty('--dl-progress', '0%');
 
     await prefetchTiles(range.xtMin, range.xtMax, range.ytMin, range.ytMax, (done, total) => {
         document.getElementById('tile-dl-status').textContent = t('downloadingTiles', { done, total });
-        document.getElementById('tile-dl-progress-fill').style.width = Math.round((done / total) * 100) + '%';
+        btn.style.setProperty('--dl-progress', Math.round((done / total) * 100) + '%');
     });
 
     btn.disabled = false;
+    btn.style.setProperty('--dl-progress', '0%');
     tilesReady = true;
     updateTileCacheLabel();
 
@@ -757,7 +801,7 @@ async function computeViewshed() {
 
     const myToken = ++vsToken; // invalidates any computation already in flight
 
-    document.getElementById('legend-vis').style.display = 'flex';
+    showMapLegend('vis');
     document.getElementById('btn-cancel').style.display = 'block';
     setStatus('startingViewshed', null, 0);
 
@@ -803,7 +847,10 @@ async function computeViewshed() {
             setStatus(d.key, null, 30 + d.percent * 0.7);
         } else if (d.type === 'result') {
             applyResult(d);
-            document.getElementById('peak-elev').value = Math.round(d.peakElev);
+            // " m" suffix here since there's no longer a separate label
+            // conveying units (the field's own placeholder + this value are
+            // now the only context for what the number means).
+            document.getElementById('peak-elev').value = Math.round(d.peakElev) + ' m';
             setStatus('doneViewshed', { elev: Math.round(d.peakElev) }, 100);
             document.getElementById('btn-cancel').style.display = 'none';
         } else if (d.type === 'error') {
@@ -832,7 +879,7 @@ async function computeShadow() {
     if (!tilesReady) return;
     const myToken = ++shadowToken; // invalidates any computation already in flight
 
-    document.getElementById('legend-shadow').style.display = 'flex';
+    showMapLegend('shadow');
     document.getElementById('btn-cancel').style.display = 'block';
 
     const dt = getSelectedDateTime();
@@ -1416,7 +1463,6 @@ function applyTranslations() {
     document.getElementById('label-pick-peak').textContent = t('pickPeakLabel');
     document.getElementById('peak-select-placeholder').textContent = t('choosePeak');
     if (!selectedPeak) document.getElementById('vis-coords').textContent = t('noPeakSelected');
-    document.getElementById('label-elevation').textContent = t('elevationLabel');
     document.getElementById('peak-elev').placeholder = t('detectedOnCompute');
 
     document.getElementById('label-datetime').textContent = t('dateTimeLabel');
@@ -1425,9 +1471,7 @@ function applyTranslations() {
     document.getElementById('status').textContent = t(currentStatusKey, currentStatusParams);
     document.getElementById('btn-cancel').textContent = t('cancel');
 
-    document.getElementById('label-legend').textContent = t('legend');
-    document.getElementById('legend-vis-text').textContent = t('legendVis');
-    document.getElementById('legend-shadow-text').textContent = t('legendShadow');
+    if (currentLegendKind) showMapLegend(currentLegendKind);
 
     document.getElementById('footer-elevation-label').textContent = t('footerElevation');
     document.getElementById('footer-basemap-label').textContent = t('footerBasemap');
