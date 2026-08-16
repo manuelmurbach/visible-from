@@ -499,6 +499,30 @@ const LocateControl = L.Control.extend({
 });
 map.addControl(new LocateControl());
 
+// A map control (stacked below zoom/locate) rather than a small footer
+// link, since the footer link was easy to miss - blue-accented (see CSS)
+// so it reads as an inviting action, not just another neutral map tool.
+let feedbackControlLink = null;
+
+const FeedbackControl = L.Control.extend({
+    options: { position: 'topleft' },
+    onAdd: function () {
+        const container = L.DomUtil.create('div', 'leaflet-bar leaflet-control feedback-control');
+        const link = L.DomUtil.create('a', '', container);
+        link.href = '#';
+        link.setAttribute('role', 'button');
+        link.innerHTML =
+            '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+            'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle">' +
+            '<path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>' +
+            '</svg>';
+        L.DomEvent.on(link, 'click', L.DomEvent.stop).on(link, 'click', openFeedbackModal);
+        feedbackControlLink = link;
+        return container;
+    }
+});
+map.addControl(new FeedbackControl());
+
 // ---------------------------------------------------------------------------
 // Legend – a Leaflet control over the map's top-right corner instead of a
 // sidebar section, so it sits right next to the overlay it describes
@@ -574,14 +598,32 @@ window.setMode = setMode;
 
 // ---------------------------------------------------------------------------
 // Mobile panel toggle – on narrow screens (see CSS) the panel becomes a
-// slide-over drawer instead of a permanent sidebar, so the map is usable.
+// bottom sheet instead of a permanent sidebar, so the map is usable.
 // ---------------------------------------------------------------------------
 
+// Mirrors the panel's own open/closed state onto <body> so CSS elsewhere
+// (the #map height shrink, the progress bar's position) can react to it
+// without needing a same-or-later-sibling relationship to #panel itself.
 function togglePanel() {
     const isOpen = document.getElementById('panel').classList.toggle('open');
     document.getElementById('panel-toggle').classList.toggle('open', isOpen);
+    document.body.classList.toggle('panel-open', isOpen);
+    // #map's resize is CSS-only (a transition on `height`), and Leaflet
+    // doesn't detect that on its own - it keeps using its last-known
+    // container size for pan bounds/rendering until told otherwise, which
+    // is exactly what let you drag past the "visible" area into whatever
+    // was hidden under the sheet. Called once after the resize transition
+    // finishes so it picks up the final size, not a mid-transition one.
+    setTimeout(() => map.invalidateSize(), 260);
 }
 window.togglePanel = togglePanel;
+// Match <body>'s initial class to the panel's actual starting state (open,
+// per the markup) rather than assuming it, and invalidate immediately -
+// Leaflet measured #map's size at L.map() init time above, which (on
+// mobile) was before this class/the #map height shrink took effect, so
+// its cached size starts out stale/full-height without this.
+document.body.classList.toggle('panel-open', document.getElementById('panel').classList.contains('open'));
+map.invalidateSize();
 
 // ---------------------------------------------------------------------------
 // Map click – peak selection
@@ -1543,7 +1585,6 @@ function applyTranslations() {
     document.getElementById('footer-elevation-label').textContent = t('footerElevation');
     document.getElementById('footer-basemap-label').textContent = t('footerBasemap');
 
-    document.getElementById('btn-feedback').textContent = t('feedbackButton');
     document.getElementById('feedback-heading').textContent = t('feedbackHeading');
     document.getElementById('feedback-message').placeholder = t('feedbackMessagePlaceholder');
     document.getElementById('feedback-email').placeholder = t('feedbackEmailPlaceholder');
@@ -1554,6 +1595,10 @@ function applyTranslations() {
     if (locateControlLink) {
         locateControlLink.title = t('showMyLocation');
         locateControlLink.setAttribute('aria-label', t('showMyLocation'));
+    }
+    if (feedbackControlLink) {
+        feedbackControlLink.title = t('feedbackButton');
+        feedbackControlLink.setAttribute('aria-label', t('feedbackButton'));
     }
 
     if (window.refreshDateTimeWheelLabels) window.refreshDateTimeWheelLabels();

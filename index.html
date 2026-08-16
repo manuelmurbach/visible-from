@@ -25,11 +25,6 @@
     #map { flex: 1; }
 
     /* ── Side panel ── */
-    /* Padding lives on #panel-inner, not #panel itself, so #top-progress-bar
-       (a direct child of #panel) can sit flush at the very top edge without
-       fighting the padding via negative margins – that combination (negative
-       margin + position:sticky + an overflow:auto ancestor) is fragile and
-       was rendering inconsistently in Safari on iPhone. */
     #panel {
       width: 216px;
       min-width: 216px;
@@ -268,24 +263,26 @@
     .btn-danger  { background: #dc2626; color: #fff; }
     .btn-danger:hover  { background: #b91c1c; }
 
-    /* Sticky, always-visible progress indicator for the currently running
-       computation, pinned to the very top of #panel regardless of scroll
-       position within it – a mid-panel bar could easily end up scrolled
-       out of view, especially on the short mobile sheet. It's a direct
-       child of #panel, sitting outside #panel-inner's padding entirely
-       (rather than a padded child pulled flush via negative margins, which
-       rendered inconsistently in Safari), so it needs no margin tricks.
-       Transparent background so it's invisible (not just an empty grey
-       track) whenever nothing's running. */
+    /* Always-visible progress indicator for the currently running
+       computation. Lives outside #panel entirely (like the onboarding
+       bubble) and uses position:fixed rather than position:sticky inside
+       the panel's own scroll container – that combination (plus the
+       negative margins needed to sit flush against the panel's padding)
+       rendered inconsistently in Safari on iPhone. Being fixed also means
+       it stays visible even when the sheet is collapsed (see the mobile
+       override below), instead of disappearing along with it.
+       Desktop: flush against the panel's own top edge/width (216px must
+       match #panel's width). Transparent background so it's invisible
+       (not just an empty grey track) whenever nothing's running. */
     #top-progress-bar {
-      position: sticky;
+      position: fixed;
       top: 0;
+      left: 216px;
+      right: 0;
       height: 3px;
-      flex-shrink: 0;
       background: transparent;
       overflow: hidden;
-      z-index: 50;
-      border-radius: 14px 14px 0 0;
+      z-index: 1600;
     }
     #top-progress-fill {
       height: 100%;
@@ -444,17 +441,12 @@
       line-height: 1.5;
     }
     #footer a { color: #b0b5be; }
-    #footer button#btn-feedback {
-      background: none;
-      border: none;
-      padding: 0;
-      margin: 0;
-      font: inherit;
-      color: #b0b5be;
-      text-decoration: underline;
-      cursor: pointer;
-    }
-    #footer button#btn-feedback:hover { color: #1d4ed8; }
+
+    /* Feedback map control – blue-accented (unlike the neutral white
+       zoom/locate buttons) so it stands out as an inviting action rather
+       than blending in as just another map tool. */
+    .feedback-control a { background-color: #1d4ed8 !important; color: #fff !important; }
+    .feedback-control a:hover { background-color: #1e40af !important; }
 
     /* Feedback modal – submits via FormSubmit.co's AJAX endpoint, no
        backend of our own needed. */
@@ -543,8 +535,7 @@
       #panel-toggle { display: flex; }
 
       /* Slides up from the bottom, full width, capped height with its own
-         scroll – the top portion of the map stays visible/pannable even
-         with the sheet open. */
+         scroll. */
       #panel {
         position: fixed;
         top: auto;
@@ -562,6 +553,32 @@
       }
       #panel.open { transform: translateY(0); }
       #panel-inner { padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px)); }
+
+      /* #panel is position:fixed, which takes it out of the flex layout
+         entirely – #map (the only remaining flex participant) stretches to
+         fill the *whole* screen underneath it by default, so Leaflet thinks
+         the fully-covered bottom portion is still visible/pannable. Shrink
+         #map to just the space actually visible above the sheet whenever
+         it's open (toggled via the body.panel-open class in JS, which also
+         calls map.invalidateSize() – Leaflet caches its container size and
+         won't notice a CSS-only resize on its own). */
+      #map { transition: height 0.25s ease; }
+      body.panel-open #map { height: calc(100% - var(--panel-h)); }
+
+      /* Progress bar: sits right above the sheet when it's open, or at the
+         very bottom of the screen when collapsed – either way it should
+         never simply disappear along with the sheet. */
+      #top-progress-bar {
+        top: auto;
+        left: 0;
+        right: 0;
+        bottom: env(safe-area-inset-bottom, 0px);
+        transition: bottom 0.25s ease;
+      }
+      body.panel-open #top-progress-bar {
+        bottom: calc(var(--panel-h) + env(safe-area-inset-bottom, 0px));
+        border-radius: 14px 14px 0 0;
+      }
 
       /* Version SHA + DE/EN back on the same line as the title (right-
          aligned) instead of their own row below it, reclaiming that row's
@@ -619,6 +636,8 @@
   </svg>
 </button>
 
+<div id="top-progress-bar"><div id="top-progress-fill"></div></div>
+
 <div id="onboarding-bubble" class="onboarding-bubble" style="display:none">
   <div class="onboarding-bubble-arrow"></div>
   <button type="button" class="onboarding-bubble-close" id="onboarding-bubble-close" onclick="dismissOnboarding()">&times;</button>
@@ -626,8 +645,6 @@
 </div>
 
 <div id="panel" class="open">
-
-  <div id="top-progress-bar"><div id="top-progress-fill"></div></div>
 
   <div id="panel-inner">
 
@@ -736,7 +753,6 @@
     (AWS Open Data) &middot;
     <span id="footer-basemap-label">Basemap:</span> &copy; <a href="https://www.swisstopo.admin.ch" target="_blank">swisstopo</a>
     / &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a>
-    &middot; <button type="button" id="btn-feedback" onclick="openFeedbackModal()">Feedback</button>
   </div>
 
   </div><!-- #panel-inner -->
