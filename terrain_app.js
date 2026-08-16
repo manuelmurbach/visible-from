@@ -19,6 +19,7 @@ const STRINGS = {
         modeShadowBold: 'Sun', modeShadowSuffix: ' Visible From',
         pickPeakLabel: 'Click the map, or pick a peak',
         choosePeak: 'Choose a peak…',
+        mapClickOption: 'Clicked on map',
         noPeakSelected: 'No peak selected',
         detectedOnCompute: 'Elevation…',
         dateTimeLabel: 'Date & Time (your local time)',
@@ -65,6 +66,7 @@ const STRINGS = {
         modeShadowBold: 'Sonne', modeShadowSuffix: ' sichtbar von',
         pickPeakLabel: 'Klicke auf die Karte oder wähle einen Gipfel',
         choosePeak: 'Gipfel wählen…',
+        mapClickOption: 'Auf Karte geklickt',
         noPeakSelected: 'Kein Gipfel ausgewählt',
         detectedOnCompute: 'Höhe…',
         dateTimeLabel: 'Datum & Zeit (deine Ortszeit)',
@@ -515,6 +517,16 @@ function hideMapLegend() {
 // Mode switching
 // ---------------------------------------------------------------------------
 
+// Peak/Sun can't do anything useful until the elevation data is downloaded
+// (computeViewshed/computeShadow both just no-op without it), so keep them
+// visibly disabled until then rather than letting people click into a mode
+// with nothing to show yet.
+function updateModeButtonsAvailability() {
+    document.getElementById('btn-visibility').disabled = !tilesReady;
+    document.getElementById('btn-shadow').disabled = !tilesReady;
+}
+updateModeButtonsAvailability();
+
 function setMode(mode) {
     currentMode = mode;
     document.getElementById('btn-visibility').classList.toggle('active', mode === 'visibility');
@@ -576,6 +588,10 @@ function onMapClick(e) {
 
     document.getElementById('vis-coords').textContent = fmtCoord(lat, lng);
     document.getElementById('peak-elev').value = '';
+    // Otherwise the dropdown keeps showing whatever preset was last picked
+    // (e.g. "Mont Blanc") even though the actual selection has moved to
+    // wherever was just clicked.
+    document.getElementById('peak-select').value = '__map_click__';
     if (tilesReady) computeViewshed();
 }
 
@@ -760,9 +776,14 @@ async function downloadElevationData() {
 
     // The button itself doubles as the progress bar (see #btn-download-tiles
     // CSS) via a gradient driven by this custom property, instead of a
-    // separate progress-bar element – saves a row of height.
+    // separate progress-bar element – saves a row of height. It's disabled
+    // both while downloading (full opacity, via the .downloading class, so
+    // the gradient stays legible) and permanently once done (dimmed, via
+    // .tiles-ready, since there's nothing left to do with it) - Peak/Sun
+    // take over as the actionable buttons once it's greyed out.
     const btn = document.getElementById('btn-download-tiles');
     btn.disabled = true;
+    btn.classList.add('downloading');
     btn.style.setProperty('--dl-progress', '0%');
 
     await prefetchTiles(range.xtMin, range.xtMax, range.ytMin, range.ytMax, (done, total) => {
@@ -770,10 +791,12 @@ async function downloadElevationData() {
         btn.style.setProperty('--dl-progress', Math.round((done / total) * 100) + '%');
     });
 
-    btn.disabled = false;
+    btn.classList.remove('downloading');
+    btn.classList.add('tiles-ready');
     btn.style.setProperty('--dl-progress', '0%');
     tilesReady = true;
     updateTileCacheLabel();
+    updateModeButtonsAvailability();
 
     // Auto-compute for whichever mode is currently active, so the user sees
     // a result immediately instead of needing any further action. First-time
@@ -1462,6 +1485,7 @@ function applyTranslations() {
 
     document.getElementById('label-pick-peak').textContent = t('pickPeakLabel');
     document.getElementById('peak-select-placeholder').textContent = t('choosePeak');
+    document.getElementById('peak-select-mapclick').textContent = t('mapClickOption');
     if (!selectedPeak) document.getElementById('vis-coords').textContent = t('noPeakSelected');
     document.getElementById('peak-elev').placeholder = t('detectedOnCompute');
 

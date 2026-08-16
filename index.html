@@ -25,6 +25,11 @@
     #map { flex: 1; }
 
     /* ── Side panel ── */
+    /* Padding lives on #panel-inner, not #panel itself, so #top-progress-bar
+       (a direct child of #panel) can sit flush at the very top edge without
+       fighting the padding via negative margins – that combination (negative
+       margin + position:sticky + an overflow:auto ancestor) is fragile and
+       was rendering inconsistently in Safari on iPhone. */
     #panel {
       width: 216px;
       min-width: 216px;
@@ -32,9 +37,14 @@
       border-left: 1px solid #d1d5db;
       display: flex;
       flex-direction: column;
+      overflow-y: auto;
+    }
+    #panel-inner {
+      display: flex;
+      flex-direction: column;
       padding: 16px 10px;
       gap: 14px;
-      overflow-y: auto;
+      flex: 1;
     }
 
     .brand {
@@ -136,6 +146,10 @@
     .mode-toggle button.active {
       background: #1d4ed8;
       color: #fff;
+    }
+    .mode-toggle button:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
     }
 
     /* Sections */
@@ -255,15 +269,17 @@
     /* Sticky, always-visible progress indicator for the currently running
        computation, pinned to the very top of #panel regardless of scroll
        position within it – a mid-panel bar could easily end up scrolled
-       out of view, especially on the short mobile sheet. Negative margins
-       cancel #panel's own padding so it sits flush with the panel's outer
-       edge rather than inset by it; transparent background so it's
-       invisible (not just an empty grey track) whenever nothing's running. */
+       out of view, especially on the short mobile sheet. It's a direct
+       child of #panel, sitting outside #panel-inner's padding entirely
+       (rather than a padded child pulled flush via negative margins, which
+       rendered inconsistently in Safari), so it needs no margin tricks.
+       Transparent background so it's invisible (not just an empty grey
+       track) whenever nothing's running. */
     #top-progress-bar {
       position: sticky;
       top: 0;
       height: 3px;
-      margin: -16px -10px 4px -10px;
+      flex-shrink: 0;
       background: transparent;
       overflow: hidden;
       z-index: 50;
@@ -379,11 +395,18 @@
     /* The download button doubles as its own progress bar – a gradient
        fill sweeping left to right via the --dl-progress custom property
        (set from JS), instead of a separate progress-bar element. Saves a
-       row of height, which matters most on the short mobile sheet. */
+       row of height, which matters most on the short mobile sheet.
+       It's `disabled` (and hence dimmed by the generic .btn:disabled rule)
+       both while actively downloading AND once done, but those need to
+       look different: full opacity while downloading so the gradient fill
+       stays legible, dimmed once done to signal "nothing left to do here".
+       The ID beats the generic class rule's specificity either way. */
     #btn-download-tiles {
       background: linear-gradient(to right, #1e40af var(--dl-progress, 0%), #1d4ed8 var(--dl-progress, 0%));
       transition: background 0.15s linear;
     }
+    #btn-download-tiles.downloading { opacity: 1; cursor: progress; }
+    #btn-download-tiles.tiles-ready { opacity: 0.55; cursor: not-allowed; }
 
     /* Legend – shown as a Leaflet control over the map's top-right corner
        (see terrain_app.js) instead of a sidebar section, so it's visible
@@ -476,11 +499,11 @@
         z-index: 1500;
         border-radius: 14px 14px 0 0;
         box-shadow: 0 -2px 14px rgba(0,0,0,0.3);
-        padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
         transform: translateY(100%);
         transition: transform 0.25s ease;
       }
       #panel.open { transform: translateY(0); }
+      #panel-inner { padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px)); }
 
       /* Version SHA + DE/EN back on the same line as the title (right-
          aligned) instead of their own row below it, reclaiming that row's
@@ -548,6 +571,8 @@
 
   <div id="top-progress-bar"><div id="top-progress-fill"></div></div>
 
+  <div id="panel-inner">
+
   <div class="brand">
     <div class="brand-row">
       <svg width="34" height="34" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
@@ -606,6 +631,7 @@
     <div class="peak-select-row">
       <select id="peak-select" onchange="selectPreset(this.value)">
         <option value="" disabled selected id="peak-select-placeholder">Choose a peak…</option>
+        <option value="__map_click__" disabled id="peak-select-mapclick" style="display:none">Clicked on map</option>
         <option value="dufourspitze">Dufourspitze</option>
         <option value="matterhorn">Matterhorn</option>
         <option value="bachtel">Bachtel</option>
@@ -649,6 +675,8 @@
     <span id="footer-basemap-label">Basemap:</span> &copy; <a href="https://www.swisstopo.admin.ch" target="_blank">swisstopo</a>
     / &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a>
   </div>
+
+  </div><!-- #panel-inner -->
 
 </div><!-- #panel -->
 
