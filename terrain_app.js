@@ -10,7 +10,9 @@
 const STRINGS = {
     en: {
         downloadTiles: 'Download Elevation Data',
-        tileDlHint: 'Required once before computing (approx. 450 MB, 2 min).',
+        onboardingBubble: 'Start by downloading the elevation data — only required once (approx. 450 MB, 2 min).',
+        closeLabel: 'Close',
+        tilesReadyLabel: 'Ready',
         tilesCached: 'Tiles cached: {count}',
         downloadingTiles: 'Downloading {done}/{total}…',
         modeVisibilityBold: 'Peak', modeVisibilitySuffix: ' Visible From',
@@ -20,7 +22,6 @@ const STRINGS = {
         noPeakSelected: 'No peak selected',
         elevationLabel: 'Elevation (m) - Autodetected',
         detectedOnCompute: 'Detected on compute',
-        compute: 'Compute',
         dateTimeLabel: 'Date & Time (your local time)',
         wheelHint: 'Swipe, drag or scroll a wheel to change it. Double-tap/click to jump to now.',
         idle: 'Select a mode above to begin.',
@@ -28,7 +29,6 @@ const STRINGS = {
         legend: 'Legend',
         legendVis: 'Peak visible from here',
         legendShadow: 'In shadow',
-        clearOverlay: 'Clear Overlay',
         footerElevation: 'Elevation:',
         footerBasemap: 'Basemap:',
         panelToggle: 'Toggle panel',
@@ -51,7 +51,6 @@ const STRINGS = {
         workerError: 'Error: {message}',
         workerFatalError: 'Worker error: {message} (see browser console F12)',
         cancelled: 'Cancelled.',
-        overlaysCleared: 'Overlays cleared.',
         locating: 'Locating…',
         located: 'Located your position.',
         locateError: 'Could not get your location: {message}',
@@ -59,7 +58,9 @@ const STRINGS = {
     },
     de: {
         downloadTiles: 'Höhendaten herunterladen',
-        tileDlHint: 'Einmalig nötig vor der Berechnung (ca. 450 MB, 2 Min.).',
+        onboardingBubble: 'Starte mit dem Herunterladen der Höhendaten – nur einmalig nötig (ca. 450 MB, 2 Min.).',
+        closeLabel: 'Schliessen',
+        tilesReadyLabel: 'Bereit',
         tilesCached: 'Kacheln zwischengespeichert: {count}',
         downloadingTiles: 'Lade herunter {done}/{total}…',
         modeVisibilityBold: 'Gipfel', modeVisibilitySuffix: ' sichtbar von',
@@ -69,7 +70,6 @@ const STRINGS = {
         noPeakSelected: 'Kein Gipfel ausgewählt',
         elevationLabel: 'Höhe (m) – automatisch erkannt',
         detectedOnCompute: 'Wird bei Berechnung erkannt',
-        compute: 'Berechnen',
         dateTimeLabel: 'Datum & Zeit (deine Ortszeit)',
         wheelHint: 'Wische, ziehe oder scrolle an einem Rad, um es zu ändern. Doppeltippen/-klicken springt zu jetzt.',
         idle: 'Wähle oben einen Modus, um zu beginnen.',
@@ -77,7 +77,6 @@ const STRINGS = {
         legend: 'Legende',
         legendVis: 'Gipfel ist von hier sichtbar',
         legendShadow: 'Im Schatten',
-        clearOverlay: 'Overlay löschen',
         footerElevation: 'Höhe:',
         footerBasemap: 'Kartenbasis:',
         panelToggle: 'Bedienfeld ein-/ausblenden',
@@ -100,7 +99,6 @@ const STRINGS = {
         workerError: 'Fehler: {message}',
         workerFatalError: 'Worker-Fehler: {message} (siehe Browser-Konsole F12)',
         cancelled: 'Abgebrochen.',
-        overlaysCleared: 'Overlay gelöscht.',
         locating: 'Standort wird ermittelt…',
         located: 'Standort gefunden.',
         locateError: 'Standort konnte nicht ermittelt werden: {message}',
@@ -165,16 +163,11 @@ let currentMode     = 'visibility';
 let viewshedWorker  = null;
 let shadowWorker    = null;
 
-// Neither compute button can be used until the Switzerland-wide DEM tile
-// download has completed at least once – this guarantees Compute never
-// triggers a fresh network fetch (both compute tile ranges are clamped to
-// exactly the area this download covers).
+// Nothing computes until the Switzerland-wide DEM tile download has
+// completed at least once – this guarantees a computation never triggers a
+// fresh network fetch (both compute tile ranges are clamped to exactly the
+// area this download covers).
 let tilesReady = false;
-
-function updateComputeButtonAvailability() {
-    document.getElementById('btn-compute-vis').disabled  = !(tilesReady && selectedPeak);
-    document.getElementById('btn-compute-shad').disabled = !tilesReady;
-}
 
 // Bumped whenever the current peak selection changes or a new computation
 // starts; an in-flight computeViewshed()/computeShadow() checks its token
@@ -494,6 +487,16 @@ function setMode(mode) {
     document.getElementById('section-vis').style.display  = mode === 'visibility' ? 'flex' : 'none';
     document.getElementById('section-shad').style.display = mode === 'shadow'     ? 'flex' : 'none';
     if (mode === 'shadow' && window.resyncDateTimeWheels) window.resyncDateTimeWheels();
+
+    // The other mode's overlay would otherwise linger on screen looking like
+    // it belongs to the mode just switched into (most noticeable switching
+    // into visibility mode with no peak selected yet, which has nothing to
+    // auto-compute below).
+    clearOverlay();
+
+    if (!tilesReady) return;
+    if (mode === 'visibility' && selectedPeak) computeViewshed();
+    if (mode === 'shadow') computeShadow();
 }
 window.setMode = setMode;
 
@@ -538,7 +541,7 @@ function onMapClick(e) {
 
     document.getElementById('vis-coords').textContent = fmtCoord(lat, lng);
     document.getElementById('peak-elev').value = '';
-    updateComputeButtonAvailability();
+    if (tilesReady) computeViewshed();
 }
 
 // ---------------------------------------------------------------------------
@@ -561,7 +564,7 @@ function selectPreset(key) {
     document.getElementById('vis-coords').textContent =
         `${peak.name} — ${fmtCoord(peak.lat, peak.lon)}`;
     document.getElementById('peak-elev').value = '';
-    updateComputeButtonAvailability();
+    if (tilesReady) computeViewshed();
 
     map.setView([peak.lat, peak.lon], map.getZoom());
 }
@@ -609,19 +612,18 @@ function cancelComputation() {
     shadowToken++; // invalidates any computeShadow() still awaiting tiles
     if (viewshedWorker) { viewshedWorker.terminate(); viewshedWorker = null; }
     if (shadowWorker)   { shadowWorker.terminate();   shadowWorker   = null; }
-    updateComputeButtonAvailability();
     document.getElementById('btn-cancel').style.display  = 'none';
     setStatus('cancelled', null, 0);
 }
 window.cancelComputation = cancelComputation;
 
-function clearOverlays() {
+// Used internally (by setMode when switching modes) so a stale overlay never
+// lingers on screen looking like it belongs to whichever mode is now active.
+function clearOverlay() {
     if (overlayLayer) { map.removeLayer(overlayLayer); overlayLayer = null; }
     document.getElementById('legend-vis').style.display    = 'none';
     document.getElementById('legend-shadow').style.display = 'none';
-    setStatus('overlaysCleared', null, 0);
 }
-window.clearOverlays = clearOverlays;
 
 // ---------------------------------------------------------------------------
 // Tile-range calculations – shared between the actual computations and the
@@ -708,9 +710,12 @@ function getSwitzerlandTileRange() {
 function updateTileCacheLabel() {
     const el = document.getElementById('tile-dl-status');
     if (el) el.textContent = t('tilesCached', { count: tileCache.size });
+    const check = document.getElementById('tile-dl-check');
+    if (check) check.style.display = tilesReady ? 'inline' : 'none';
 }
 
 async function downloadElevationData() {
+    dismissOnboarding();
     const range = getSwitzerlandTileRange();
 
     const btn = document.getElementById('btn-download-tiles');
@@ -722,18 +727,23 @@ async function downloadElevationData() {
         document.getElementById('tile-dl-progress-fill').style.width = Math.round((done / total) * 100) + '%';
     });
 
-    updateTileCacheLabel();
     btn.disabled = false;
     tilesReady = true;
-    updateComputeButtonAvailability();
+    updateTileCacheLabel();
 
-    // First-time onboarding: if the user hasn't picked a peak yet and is
-    // still on the default mode, show them a working example immediately
-    // instead of leaving them at an empty map wondering what to click.
-    if (currentMode === 'visibility' && !selectedPeak) {
-        document.getElementById('peak-select').value = 'dufourspitze';
-        selectPreset('dufourspitze');
-        computeViewshed();
+    // Auto-compute for whichever mode is currently active, so the user sees
+    // a result immediately instead of needing any further action. First-time
+    // onboarding case: nothing selected yet in visibility mode defaults to
+    // Dufourspitze as a working example (selectPreset triggers its own
+    // compute once tilesReady, so this doesn't need to call it directly).
+    if (currentMode === 'visibility') {
+        if (selectedPeak) computeViewshed();
+        else {
+            document.getElementById('peak-select').value = 'dufourspitze';
+            selectPreset('dufourspitze');
+        }
+    } else if (currentMode === 'shadow') {
+        computeShadow();
     }
 }
 window.downloadElevationData = downloadElevationData;
@@ -747,7 +757,6 @@ async function computeViewshed() {
 
     const myToken = ++vsToken; // invalidates any computation already in flight
 
-    document.getElementById('btn-compute-vis').disabled = true;
     document.getElementById('legend-vis').style.display = 'flex';
     document.getElementById('btn-cancel').style.display = 'block';
     setStatus('startingViewshed', null, 0);
@@ -769,7 +778,6 @@ async function computeViewshed() {
     } catch (err) {
         if (myToken !== vsToken) return;
         setStatus('errorLoadingTiles', { message: err.message }, 0);
-        updateComputeButtonAvailability();
         document.getElementById('btn-cancel').style.display = 'none';
         return;
     }
@@ -785,7 +793,6 @@ async function computeViewshed() {
         if (myToken !== vsToken) return;
         console.error('[app] viewshed worker error:', err);
         setStatus('workerFatalError', { message: err.message || err }, 0);
-        updateComputeButtonAvailability();
         document.getElementById('btn-cancel').style.display = 'none';
     };
 
@@ -798,11 +805,9 @@ async function computeViewshed() {
             applyResult(d);
             document.getElementById('peak-elev').value = Math.round(d.peakElev);
             setStatus('doneViewshed', { elev: Math.round(d.peakElev) }, 100);
-            updateComputeButtonAvailability();
             document.getElementById('btn-cancel').style.display = 'none';
         } else if (d.type === 'error') {
             setStatus('workerError', { message: d.message }, 0);
-            updateComputeButtonAvailability();
             document.getElementById('btn-cancel').style.display = 'none';
         }
     };
@@ -827,7 +832,6 @@ async function computeShadow() {
     if (!tilesReady) return;
     const myToken = ++shadowToken; // invalidates any computation already in flight
 
-    document.getElementById('btn-compute-shad').disabled = true;
     document.getElementById('legend-shadow').style.display = 'flex';
     document.getElementById('btn-cancel').style.display = 'block';
 
@@ -845,7 +849,6 @@ async function computeShadow() {
         const bounds = map.getBounds();
         applyResult(makeDarkOverlay(bounds));
         setStatus('sunBelowHorizon', null, 100);
-        updateComputeButtonAvailability();
         document.getElementById('btn-cancel').style.display = 'none';
         return;
     }
@@ -872,7 +875,6 @@ async function computeShadow() {
     } catch (err) {
         if (myToken !== shadowToken) return;
         setStatus('errorLoadingTiles', { message: err.message }, 0);
-        updateComputeButtonAvailability();
         document.getElementById('btn-cancel').style.display = 'none';
         return;
     }
@@ -888,7 +890,6 @@ async function computeShadow() {
         if (myToken !== shadowToken) return;
         console.error('[app] shadow worker error:', err);
         setStatus('workerFatalError', { message: err.message || err }, 0);
-        updateComputeButtonAvailability();
         document.getElementById('btn-cancel').style.display = 'none';
     };
 
@@ -900,16 +901,13 @@ async function computeShadow() {
         } else if (d.type === 'result') {
             applyResult(d);
             setStatus('doneShadow', { az: sunAzDeg.toFixed(0), alt: sunAltDeg.toFixed(1) }, 100);
-            updateComputeButtonAvailability();
             document.getElementById('btn-cancel').style.display = 'none';
         } else if (d.type === 'allDark') {
             applyResult(makeDarkOverlay(map.getBounds()));
             setStatus('sunBelowHorizon', null, 100);
-            updateComputeButtonAvailability();
             document.getElementById('btn-cancel').style.display = 'none';
         } else if (d.type === 'error') {
             setStatus('workerError', { message: d.message }, 0);
-            updateComputeButtonAvailability();
             document.getElementById('btn-cancel').style.display = 'none';
         }
     };
@@ -1394,7 +1392,9 @@ function applyTranslations() {
     document.documentElement.lang = lang;
 
     document.getElementById('btn-download-tiles').textContent = t('downloadTiles');
-    document.getElementById('tile-dl-hint').textContent = t('tileDlHint');
+    document.getElementById('onboarding-bubble-text').textContent = t('onboardingBubble');
+    document.getElementById('onboarding-bubble-close').setAttribute('aria-label', t('closeLabel'));
+    document.getElementById('tile-dl-check').setAttribute('aria-label', t('tilesReadyLabel'));
     updateTileCacheLabel();
 
     // German mode-button labels are long enough that a mid-phrase wrap looks
@@ -1411,8 +1411,6 @@ function applyTranslations() {
     if (!selectedPeak) document.getElementById('vis-coords').textContent = t('noPeakSelected');
     document.getElementById('label-elevation').textContent = t('elevationLabel');
     document.getElementById('peak-elev').placeholder = t('detectedOnCompute');
-    document.getElementById('btn-compute-vis').textContent = t('compute');
-    document.getElementById('btn-compute-shad').textContent = t('compute');
 
     document.getElementById('label-datetime').textContent = t('dateTimeLabel');
     document.getElementById('wheel-hint').textContent = t('wheelHint');
@@ -1423,8 +1421,6 @@ function applyTranslations() {
     document.getElementById('label-legend').textContent = t('legend');
     document.getElementById('legend-vis-text').textContent = t('legendVis');
     document.getElementById('legend-shadow-text').textContent = t('legendShadow');
-
-    document.getElementById('btn-clear-overlay').textContent = t('clearOverlay');
 
     document.getElementById('footer-elevation-label').textContent = t('footerElevation');
     document.getElementById('footer-basemap-label').textContent = t('footerBasemap');
@@ -1449,7 +1445,30 @@ function setLang(newLang) {
 }
 window.setLang = setLang;
 
+// ---------------------------------------------------------------------------
+// First-visit onboarding – a callout pointing at "Download Elevation Data"
+// so new users know where to start. Shown once (localStorage flag), and
+// dismissed either explicitly (its own close button) or automatically once
+// they actually start the download.
+// ---------------------------------------------------------------------------
+
+const ONBOARDING_SEEN_KEY = 'vf_onboarding_seen';
+
+function dismissOnboarding() {
+    localStorage.setItem(ONBOARDING_SEEN_KEY, '1');
+    const el = document.getElementById('onboarding-bubble');
+    if (el) el.style.display = 'none';
+}
+window.dismissOnboarding = dismissOnboarding;
+
+function maybeShowOnboarding() {
+    if (localStorage.getItem(ONBOARDING_SEEN_KEY)) return;
+    const el = document.getElementById('onboarding-bubble');
+    if (el) el.style.display = 'block';
+}
+
 applyTranslations();
+maybeShowOnboarding();
 
 // ---------------------------------------------------------------------------
 // "Am I looking at the latest deploy?" indicator – fetches the latest commit

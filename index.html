@@ -14,6 +14,8 @@
     body {
       display: flex;
       height: 100vh;
+      height: 100dvh; /* accounts for mobile Safari's collapsing address bar,
+                         so content never ends up hidden below the fold */
       font-family: system-ui, -apple-system, sans-serif;
       font-size: 14px;
       background: #f0f0f0;
@@ -257,10 +259,91 @@
       min-height: 30px;
     }
 
+    .tile-dl-status-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
     .tile-dl-status {
       font-size: 11px;
       color: #6b7280;
     }
+    .tile-dl-check {
+      color: #16a34a;
+      font-weight: 700;
+      font-size: 14px;
+    }
+
+    /* First-visit callout pointing at "Download Elevation Data" – lives
+       outside #panel in the DOM (see body markup) and uses position:fixed
+       so it floats over the map instead of taking flow space in the menu,
+       and isn't clipped by #panel's own overflow-y:auto scroll boundary.
+       Desktop: sits left of the sidebar, arrow pointing right at the button.
+       Mobile (media query below): sits above the bottom sheet, arrow down. */
+    .onboarding-bubble {
+      position: fixed;
+      top: 96px;
+      right: 230px;
+      width: 220px;
+      z-index: 1800;
+      background: #1d4ed8;
+      color: #fff;
+      padding: 10px 26px 10px 12px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 600;
+      line-height: 1.4;
+      box-shadow: 0 4px 14px rgba(29,78,216,0.35);
+      animation: onboarding-pop 0.3s ease;
+    }
+    .onboarding-bubble-arrow {
+      position: absolute;
+      top: 18px;
+      right: -8px;
+      width: 0;
+      height: 0;
+      border-top: 8px solid transparent;
+      border-bottom: 8px solid transparent;
+      border-left: 8px solid #1d4ed8;
+    }
+    .onboarding-bubble-close {
+      position: absolute;
+      top: 2px;
+      right: 4px;
+      background: none;
+      border: none;
+      color: rgba(255,255,255,0.8);
+      font-size: 18px;
+      line-height: 1;
+      cursor: pointer;
+      padding: 4px 6px;
+    }
+    .onboarding-bubble-close:hover { color: #fff; }
+    @keyframes onboarding-pop {
+      from { transform: scale(0.9); opacity: 0; }
+      to   { transform: scale(1); opacity: 1; }
+    }
+    @media (max-width: 700px) {
+      .onboarding-bubble {
+        top: auto;
+        right: 16px;
+        left: 16px;
+        /* clears both the sheet's top edge and the pull-tab that sits there */
+        bottom: calc(var(--panel-h) + 40px);
+        width: auto;
+      }
+      .onboarding-bubble-arrow {
+        top: auto;
+        bottom: -8px;
+        right: auto;
+        left: 24px;
+        border-left: 8px solid transparent;
+        border-right: 8px solid transparent;
+        border-top: 8px solid #1d4ed8;
+        border-bottom: none;
+      }
+    }
+
     #tile-dl-progress-bar {
       height: 4px;
       background: #e5e7eb;
@@ -300,55 +383,65 @@
     }
     #footer a { color: #b0b5be; }
 
-    /* Mobile panel toggle: a small tab attached to the panel's left edge –
-       chevron points right while open (tab sits at the panel's edge), and
-       flips to point left once collapsed (tab sits at the screen edge,
-       ready to pull it back out). */
+    /* Mobile panel toggle: a small pull-tab centred at the bottom edge of
+       the screen – chevron points down while open (tab sits at the sheet's
+       top edge, tap to push it back down), and flips to point up once
+       collapsed (tab sits at the screen's bottom edge, ready to pull the
+       sheet up). Base rotate(90deg) turns the "<" path into "^"; the .open
+       state's rotate(270deg) is the *total* rotation (not additive), which
+       turns it into "v" instead. */
     #panel-toggle {
       display: none;
       align-items: center;
       justify-content: center;
       position: fixed;
-      top: 20px;
-      right: 0;
+      left: 50%;
+      bottom: env(safe-area-inset-bottom, 0px);
+      transform: translateX(-50%);
       z-index: 1700;
-      width: 34px;
-      height: 48px;
-      border-radius: 10px 0 0 10px;
+      width: 48px;
+      height: 30px;
+      border-radius: 10px 10px 0 0;
       border: none;
       background: linear-gradient(135deg, #3b82f6, #1d4ed8);
-      box-shadow: -2px 2px 8px rgba(0,0,0,0.28);
+      box-shadow: 0 -2px 8px rgba(0,0,0,0.28);
       cursor: pointer;
-      transition: right 0.25s ease, box-shadow 0.15s ease;
+      transition: bottom 0.25s ease, box-shadow 0.15s ease;
     }
-    #panel-toggle:hover { box-shadow: -2px 2px 11px rgba(0,0,0,0.38); }
+    #panel-toggle:hover { box-shadow: 0 -2px 11px rgba(0,0,0,0.38); }
     #panel-toggle svg {
       width: 11px;
       height: 11px;
       color: #fff;
       transition: transform 0.25s ease;
+      transform: rotate(90deg);
     }
-    #panel-toggle.open svg { transform: rotate(180deg); }
-    #panel-toggle.open { right: var(--panel-w); }
+    #panel-toggle.open svg { transform: rotate(270deg); }
+    #panel-toggle.open { bottom: calc(var(--panel-h) + env(safe-area-inset-bottom, 0px)); }
     @media (max-width: 700px) {
-      :root { --panel-w: min(216px, 85vw); }
+      :root { --panel-h: min(70vh, 560px); }
       #panel-toggle { display: flex; }
 
-      /* Slides in over the map but never blocks it – the map stays fully
-         pannable/zoomable everywhere the panel itself isn't covering. */
+      /* Slides up from the bottom, full width, capped height with its own
+         scroll – the top portion of the map stays visible/pannable even
+         with the sheet open. */
       #panel {
         position: fixed;
-        top: 0;
+        top: auto;
+        left: 0;
         right: 0;
-        height: 100%;
-        width: var(--panel-w);
+        bottom: 0;
+        height: var(--panel-h);
+        width: auto;
         min-width: 0;
         z-index: 1500;
-        box-shadow: -2px 0 14px rgba(0,0,0,0.3);
-        transform: translateX(100%);
+        border-radius: 14px 14px 0 0;
+        box-shadow: 0 -2px 14px rgba(0,0,0,0.3);
+        padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+        transform: translateY(100%);
         transition: transform 0.25s ease;
       }
-      #panel.open { transform: translateX(0); }
+      #panel.open { transform: translateY(0); }
     }
   </style>
 </head>
@@ -361,6 +454,12 @@
     <path d="M15 6l-6 6 6 6" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"/>
   </svg>
 </button>
+
+<div id="onboarding-bubble" class="onboarding-bubble" style="display:none">
+  <div class="onboarding-bubble-arrow"></div>
+  <button type="button" class="onboarding-bubble-close" id="onboarding-bubble-close" onclick="dismissOnboarding()">&times;</button>
+  <span id="onboarding-bubble-text"></span>
+</div>
 
 <div id="panel" class="open">
 
@@ -399,8 +498,10 @@
       Download Elevation Data
     </button>
     <div id="tile-dl-progress-bar"><div id="tile-dl-progress-fill"></div></div>
-    <div class="tile-dl-status" id="tile-dl-status">Tiles cached: 0</div>
-    <p class="hint" id="tile-dl-hint">Required once before computing (approx. 450 MB, 2 min).</p>
+    <div class="tile-dl-status-row">
+      <span class="tile-dl-status" id="tile-dl-status">Tiles cached: 0</span>
+      <span id="tile-dl-check" class="tile-dl-check" style="display:none">✓</span>
+    </div>
   </div>
 
   <!-- Mode toggle -->
@@ -432,11 +533,6 @@
 
     <label class="field-label" id="label-elevation">Elevation (m) - Autodetected</label>
     <input type="text" id="peak-elev" placeholder="Detected on compute" readonly>
-
-    <button class="btn btn-primary" id="btn-compute-vis"
-            onclick="computeViewshed()" disabled>
-      Compute
-    </button>
   </div>
 
   <!-- ── Shadow section ── -->
@@ -447,11 +543,6 @@
       <div class="wheel" id="time-wheel" tabindex="0"></div>
     </div>
     <p class="hint" id="wheel-hint">Swipe, drag or scroll a wheel to change it. Double-tap/click to jump to now.</p>
-
-    <button class="btn btn-primary" id="btn-compute-shad"
-            onclick="computeShadow()" disabled>
-      Compute
-    </button>
   </div>
 
   <!-- Progress -->
@@ -476,11 +567,6 @@
       <span id="legend-shadow-text">In shadow</span>
     </div>
   </div>
-
-  <!-- Clear -->
-  <button class="btn btn-danger" id="btn-clear-overlay" onclick="clearOverlays()">
-    Clear Overlay
-  </button>
 
   <div id="footer">
     <span id="footer-elevation-label">Elevation:</span>
