@@ -10,8 +10,15 @@
 const STRINGS = {
     en: {
         downloadTiles: 'Download Elevation Data',
-        onboardingBubble: 'Start by downloading the elevation data — only required once (approx. 450 MB, 2 min).',
+        onboardingBubble: 'Start by downloading the elevation data — only required once (approx. 450 MB, 2 min). When visiting again, it will only take a few seconds to load!',
         closeLabel: 'Close',
+        feedbackButton: 'Feedback',
+        feedbackHeading: 'Send Feedback',
+        feedbackMessagePlaceholder: 'Your message…',
+        feedbackEmailPlaceholder: 'Your email (optional, so I can reply)',
+        feedbackSubmit: 'Send',
+        feedbackThanks: 'Thanks for your feedback!',
+        feedbackError: 'Something went wrong — please try again, or email manuel.murbach@gmail.com directly.',
         tilesReadyLabel: 'Ready',
         tilesCached: 'Tiles cached: {count}',
         downloadingTiles: 'Downloading {done}/{total}…',
@@ -58,10 +65,17 @@ const STRINGS = {
     },
     de: {
         downloadTiles: 'Höhendaten laden',
-        onboardingBubble: 'Starte mit dem Herunterladen der Höhendaten – nur einmalig nötig (ca. 450 MB, 2 Min.).',
+        onboardingBubble: 'Starte mit dem Herunterladen der Höhendaten – nur einmalig nötig (ca. 450 MB, 2 Min.). Bei einem erneuten Besuch dauert das Laden nur noch wenige Sekunden!',
         closeLabel: 'Schliessen',
+        feedbackButton: 'Feedback',
+        feedbackHeading: 'Feedback senden',
+        feedbackMessagePlaceholder: 'Deine Nachricht…',
+        feedbackEmailPlaceholder: 'Deine E-Mail (optional, für eine Antwort)',
+        feedbackSubmit: 'Senden',
+        feedbackThanks: 'Danke für dein Feedback!',
+        feedbackError: 'Etwas ist schiefgelaufen – bitte versuche es erneut oder schreibe direkt an manuel.murbach@gmail.com.',
         tilesReadyLabel: 'Bereit',
-        tilesCached: 'Kacheln zwischengespeichert: {count}',
+        tilesCached: 'Kacheln gespeichert: {count}',
         downloadingTiles: 'Lade herunter {done}/{total}…',
         modeVisibilityBold: 'Gipfel', modeVisibilitySuffix: ' sichtbar von',
         modeShadowBold: 'Sonne', modeShadowSuffix: ' sichtbar von',
@@ -1529,6 +1543,13 @@ function applyTranslations() {
     document.getElementById('footer-elevation-label').textContent = t('footerElevation');
     document.getElementById('footer-basemap-label').textContent = t('footerBasemap');
 
+    document.getElementById('btn-feedback').textContent = t('feedbackButton');
+    document.getElementById('feedback-heading').textContent = t('feedbackHeading');
+    document.getElementById('feedback-message').placeholder = t('feedbackMessagePlaceholder');
+    document.getElementById('feedback-email').placeholder = t('feedbackEmailPlaceholder');
+    document.getElementById('feedback-submit-btn').textContent = t('feedbackSubmit');
+    document.getElementById('feedback-modal-close').setAttribute('aria-label', t('closeLabel'));
+
     document.getElementById('panel-toggle').setAttribute('aria-label', t('panelToggle'));
     if (locateControlLink) {
         locateControlLink.title = t('showMyLocation');
@@ -1614,6 +1635,66 @@ window.addEventListener('resize', () => {
     const el = document.getElementById('onboarding-bubble');
     if (el && el.style.display !== 'none') positionOnboardingBubble();
 });
+
+// ---------------------------------------------------------------------------
+// Feedback – a small modal that submits via FormSubmit.co's AJAX endpoint
+// (https://formsubmit.co/ajax/<email>) rather than a real backend, since
+// this is a static site with none. The _honey field is FormSubmit's spam
+// honeypot convention: left blank by real users, silently discarded if a
+// bot fills it in. The very first submission to a new destination address
+// triggers a one-time confirmation email from FormSubmit that has to be
+// clicked before further submissions actually get delivered.
+// ---------------------------------------------------------------------------
+
+function openFeedbackModal() {
+    document.getElementById('feedback-modal').style.display = 'flex';
+    document.getElementById('feedback-message').focus();
+}
+window.openFeedbackModal = openFeedbackModal;
+
+function closeFeedbackModal() {
+    document.getElementById('feedback-modal').style.display = 'none';
+}
+window.closeFeedbackModal = closeFeedbackModal;
+
+async function submitFeedback(e) {
+    e.preventDefault();
+    const message = document.getElementById('feedback-message').value.trim();
+    if (!message) return;
+    const email = document.getElementById('feedback-email').value.trim();
+    const submitBtn = document.getElementById('feedback-submit-btn');
+    const status = document.getElementById('feedback-status');
+
+    submitBtn.disabled = true;
+    status.className = '';
+    status.textContent = '';
+
+    try {
+        const resp = await fetch('https://formsubmit.co/ajax/manuel.murbach@gmail.com', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+            body: JSON.stringify({
+                message,
+                email: email || '(not provided)',
+                _subject: 'Visible From – Feedback',
+                _captcha: 'false',
+                language: lang,
+                page: location.href,
+            }),
+        });
+        if (!resp.ok) throw new Error('bad response');
+        status.textContent = t('feedbackThanks');
+        status.className = 'success';
+        document.getElementById('feedback-form').reset();
+        setTimeout(closeFeedbackModal, 1800);
+    } catch (err) {
+        status.textContent = t('feedbackError');
+        status.className = 'error';
+    } finally {
+        submitBtn.disabled = false;
+    }
+}
+window.submitFeedback = submitFeedback;
 
 applyTranslations();
 maybeShowOnboarding();
