@@ -882,13 +882,13 @@ async function downloadElevationData() {
     // Auto-compute for whichever mode is currently active, so the user sees
     // a result immediately instead of needing any further action. First-time
     // onboarding case: nothing selected yet in visibility mode defaults to
-    // Dufourspitze as a working example (selectPreset triggers its own
+    // Eiger as a working example (selectPreset triggers its own
     // compute once tilesReady, so this doesn't need to call it directly).
     if (currentMode === 'visibility') {
         if (selectedPeak) computeViewshed();
         else {
-            document.getElementById('peak-select').value = 'dufourspitze';
-            selectPreset('dufourspitze');
+            document.getElementById('peak-select').value = 'eiger';
+            selectPreset('eiger');
         }
     } else if (currentMode === 'shadow') {
         computeShadow();
