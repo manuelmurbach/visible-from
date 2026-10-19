@@ -465,7 +465,7 @@ function locateMe() {
             const { latitude: lat, longitude: lon } = pos.coords;
             if (locationMarker) map.removeLayer(locationMarker);
             locationMarker = L.circleMarker([lat, lon], {
-                radius: 8, color: '#fff', weight: 2, fillColor: '#1d4ed8', fillOpacity: 1
+                radius: 8, color: '#fff', weight: 2, fillColor: '#185FA5', fillOpacity: 1
             })
                 .addTo(map)
                 .bindPopup(`<b>${t('yourLocationPopup')}</b><br>${fmtCoord(lat, lon)}`)

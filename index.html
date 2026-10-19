@@ -4,7 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Visible From</title>
-  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMiAzMiI+PGRlZnM+PGxpbmVhckdyYWRpZW50IGlkPSJsZyIgeDE9IjAiIHkxPSIwIiB4Mj0iMSIgeTI9IjEiPjxzdG9wIG9mZnNldD0iMCUiIHN0b3AtY29sb3I9IiMzYjgyZjYiLz48c3RvcCBvZmZzZXQ9IjEwMCUiIHN0b3AtY29sb3I9IiMxZDRlZDgiLz48L2xpbmVhckdyYWRpZW50PjwvZGVmcz48cmVjdCB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHJ4PSI5IiBmaWxsPSJ1cmwoI2xnKSIvPjxjaXJjbGUgY3g9IjIyIiBjeT0iMTAiIHI9IjQiIGZpbGw9IiNmYmJmMjQiLz48cGF0aCBkPSJNMyAyNSBMMTIgMTEgTDE2LjUgMTcgTDIxIDkgTDI5IDI1IFoiIGZpbGw9IiNlZmY2ZmYiLz48cGF0aCBkPSJNMyAyNSBMMTIgMTEgTDE2LjUgMTcgTDEzLjcgMjEgTDkgMjUgWiIgZmlsbD0iI2JmZGJmZSIvPjxnIHN0cm9rZT0iI2ZiYmYyNCIgc3Ryb2tlLXdpZHRoPSIxLjQiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCI+PHBhdGggZD0iTTEyIDExIEw4LjUgNi41Ii8+PHBhdGggZD0iTTEyIDExIEw0LjUgOC41IiBzdHJva2UtZGFzaGFycmF5PSIxLjYgMi4yIi8+PC9nPjwvc3ZnPg==">
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
+  <meta name="theme-color" content="#f6f3ee">
 
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 
@@ -18,7 +20,7 @@
                          so content never ends up hidden below the fold */
       font-family: system-ui, -apple-system, sans-serif;
       font-size: 14px;
-      background: #f0f0f0;
+      background: #f6f3ee;
     }
 
     /* ── Map ── */
@@ -28,8 +30,8 @@
     #panel {
       width: 216px;
       min-width: 216px;
-      background: #fff;
-      border-left: 1px solid #d1d5db;
+      background: #fdfcf9;
+      border-left: 1px solid #e2ddd3;
       display: flex;
       flex-direction: column;
       overflow-y: auto;
@@ -52,7 +54,7 @@
       align-items: center;
       gap: 8px;
     }
-    .brand-row svg { flex-shrink: 0; }
+    .brand-row img { flex-shrink: 0; display: block; }
     .brand-row h1 { white-space: nowrap; }
 
     .brand-toolbar {
@@ -69,14 +71,14 @@
     .app-version {
       font-size: 10px;
       font-family: monospace;
-      color: #b0b5be;
+      color: #b3aebb;
       text-decoration: none;
     }
     .app-version:hover { text-decoration: underline; }
 
     .lang-toggle {
       display: flex;
-      border: 1px solid #d1d5db;
+      border: 1px solid #e2ddd3;
       border-radius: 6px;
       overflow: hidden;
       flex-shrink: 0;
@@ -84,26 +86,26 @@
     .lang-toggle button {
       padding: 3px 7px;
       border: none;
-      background: #f9fafb;
+      background: #f7f5f0;
       cursor: pointer;
       font-size: 11px;
       font-weight: 600;
-      color: #555;
+      color: #5a5563;
     }
-    .lang-toggle button.active { background: #1d4ed8; color: #fff; }
+    .lang-toggle button.active { background: #185FA5; color: #fff; }
 
     h1 {
       font-size: 25px;
       font-weight: 800;
       letter-spacing: -0.02em;
-      color: #111;
+      color: #17151f;
       line-height: 1.15;
     }
     h1 small {
       display: block;
       font-size: 11px;
       font-weight: 400;
-      color: #888;
+      color: #8a8594;
       margin-top: 2px;
     }
 
@@ -123,7 +125,7 @@
     /* Toggle rows */
     .mode-toggle {
       display: flex;
-      border: 1px solid #d1d5db;
+      border: 1px solid #e2ddd3;
       border-radius: 7px;
       overflow: hidden;
     }
@@ -131,15 +133,15 @@
       flex: 1;
       padding: 7px 4px;
       border: none;
-      background: #f9fafb;
+      background: #f7f5f0;
       cursor: pointer;
       font-size: 13px;
       font-weight: 500;
-      color: #555;
+      color: #5a5563;
       transition: background 0.15s, color 0.15s;
     }
     .mode-toggle button.active {
-      background: #1d4ed8;
+      background: #185FA5;
       color: #fff;
     }
     .mode-toggle button:disabled {
@@ -157,7 +159,7 @@
     label.field-label {
       font-size: 11px;
       font-weight: 600;
-      color: #6b7280;
+      color: #6b6676;
       text-transform: uppercase;
       letter-spacing: 0.04em;
     }
@@ -165,8 +167,8 @@
     .coord-box {
       font-size: 12px;
       font-family: monospace;
-      color: #374151;
-      background: #f3f4f6;
+      color: #3d3947;
+      background: #f1eee8;
       border-radius: 5px;
       padding: 5px 8px;
       min-height: 26px;
@@ -178,29 +180,29 @@
     textarea {
       width: 100%;
       padding: 6px 8px;
-      border: 1px solid #d1d5db;
+      border: 1px solid #e2ddd3;
       border-radius: 5px;
       font-size: 13px;
-      color: #111;
+      color: #17151f;
     }
-    input:focus, textarea:focus { outline: 2px solid #93c5fd; border-color: #93c5fd; }
+    input:focus, textarea:focus { outline: 2px solid #85B7EB; border-color: #85B7EB; }
     input[readonly] {
-      background: #f3f4f6;
-      color: #374151;
+      background: #f1eee8;
+      color: #3d3947;
       cursor: default;
     }
-    input[readonly]:focus { outline: none; border-color: #d1d5db; }
+    input[readonly]:focus { outline: none; border-color: #e2ddd3; }
 
     select {
       width: 100%;
       padding: 6px 8px;
-      border: 1px solid #d1d5db;
+      border: 1px solid #e2ddd3;
       border-radius: 5px;
       font-size: 13px;
-      color: #111;
-      background: #fff;
+      color: #17151f;
+      background: #fdfcf9;
     }
-    select:focus { outline: 2px solid #93c5fd; border-color: #93c5fd; }
+    select:focus { outline: 2px solid #85B7EB; border-color: #85B7EB; }
 
     .datetime-stack { display: flex; flex-direction: column; gap: 6px; }
 
@@ -215,8 +217,8 @@
       -webkit-overflow-scrolling: touch;
       touch-action: pan-x;
       scrollbar-width: none;
-      background: #f9fafb;
-      border: 1px solid #e5e7eb;
+      background: #f7f5f0;
+      border: 1px solid #ebe7df;
       border-radius: 6px;
       cursor: grab;
       -webkit-mask-image: linear-gradient(to right, transparent, #000 18%, #000 82%, transparent);
@@ -225,7 +227,7 @@
     .wheel::-webkit-scrollbar { display: none; }
     .wheel.dragging { cursor: grabbing; scroll-snap-type: none; }
     .wheel:focus { outline: none; }
-    .wheel:focus-visible { outline: 2px solid #93c5fd; outline-offset: 1px; }
+    .wheel:focus-visible { outline: 2px solid #85B7EB; outline-offset: 1px; }
 
     .wheel-item {
       flex: 0 0 auto;
@@ -234,16 +236,16 @@
       align-items: center;
       justify-content: center;
       font-size: 12px;
-      color: #b0b5be;
+      color: #b3aebb;
       font-variant-numeric: tabular-nums;
       user-select: none;
       transition: color 0.1s;
     }
-    .wheel-item.selected { color: #111; font-weight: 700; font-size: 13px; }
+    .wheel-item.selected { color: #17151f; font-weight: 700; font-size: 13px; }
 
     .hint {
       font-size: 11px;
-      color: #9ca3af;
+      color: #9d98a8;
       line-height: 1.4;
     }
 
@@ -258,8 +260,8 @@
       transition: opacity 0.15s;
     }
     .btn:disabled { opacity: 0.45; cursor: not-allowed; }
-    .btn-primary { background: #1d4ed8; color: #fff; }
-    .btn-primary:hover:not(:disabled) { background: #1e40af; }
+    .btn-primary { background: #185FA5; color: #fff; }
+    .btn-primary:hover:not(:disabled) { background: #0C447C; }
     .btn-danger  { background: #dc2626; color: #fff; }
     .btn-danger:hover  { background: #b91c1c; }
 
@@ -287,12 +289,12 @@
     #top-progress-fill {
       height: 100%;
       width: 0%;
-      background: #1d4ed8;
+      background: #185FA5;
       transition: width 0.25s;
     }
     #status {
       font-size: 11px;
-      color: #6b7280;
+      color: #6b6676;
       line-height: 1.4;
       min-height: 30px;
     }
@@ -304,7 +306,7 @@
     }
     .tile-dl-status {
       font-size: 11px;
-      color: #6b7280;
+      color: #6b6676;
     }
     .tile-dl-check {
       color: #16a34a;
@@ -331,7 +333,7 @@
       right: 230px;
       width: 270px;
       z-index: 1800;
-      background: rgba(29, 78, 216, 0.86);
+      background: rgba(24, 95, 165, 0.86);
       backdrop-filter: blur(6px);
       -webkit-backdrop-filter: blur(6px);
       color: #fff;
@@ -340,7 +342,7 @@
       font-size: 14px;
       font-weight: 600;
       line-height: 1.5;
-      box-shadow: 0 10px 28px rgba(29,78,216,0.4);
+      box-shadow: 0 10px 28px rgba(24,95,165,0.4);
       animation: onboarding-pop 0.3s ease;
     }
     .onboarding-bubble-arrow {
@@ -351,7 +353,7 @@
       height: 0;
       border-top: 10px solid transparent;
       border-bottom: 10px solid transparent;
-      border-left: 10px solid rgba(29, 78, 216, 0.86);
+      border-left: 10px solid rgba(24, 95, 165, 0.86);
     }
     .onboarding-bubble-close {
       position: absolute;
@@ -386,7 +388,7 @@
         left: 24px;
         border-left: 10px solid transparent;
         border-right: 10px solid transparent;
-        border-top: 10px solid rgba(29, 78, 216, 0.86);
+        border-top: 10px solid rgba(24, 95, 165, 0.86);
         border-bottom: none;
       }
     }
@@ -401,7 +403,7 @@
        stays legible, dimmed once done to signal "nothing left to do here".
        The ID beats the generic class rule's specificity either way. */
     #btn-download-tiles {
-      background: linear-gradient(to right, #1e40af var(--dl-progress, 0%), #1d4ed8 var(--dl-progress, 0%));
+      background: linear-gradient(to right, #0C447C var(--dl-progress, 0%), #185FA5 var(--dl-progress, 0%));
       transition: background 0.15s linear;
     }
     #btn-download-tiles.downloading { opacity: 1; cursor: progress; }
@@ -422,7 +424,7 @@
       box-shadow: 0 1px 5px rgba(0,0,0,0.4);
       font-size: 12px;
       font-family: system-ui, -apple-system, sans-serif;
-      color: #374151;
+      color: #3d3947;
       pointer-events: none;
     }
     .map-legend-swatch {
@@ -437,16 +439,17 @@
     #footer {
       margin-top: auto;
       font-size: 10px;
-      color: #b0b5be;
+      color: #b3aebb;
       line-height: 1.5;
     }
-    #footer a { color: #b0b5be; }
+    #footer a { color: #b3aebb; }
+    #footer a.home-link { color: #185FA5; font-weight: 600; text-decoration: none; }
 
     /* Feedback map control – blue-accented (unlike the neutral white
        zoom/locate buttons) so it stands out as an inviting action rather
        than blending in as just another map tool. */
-    .feedback-control a { background-color: #1d4ed8 !important; color: #fff !important; }
-    .feedback-control a:hover { background-color: #1e40af !important; }
+    .feedback-control a { background-color: #185FA5 !important; color: #fff !important; }
+    .feedback-control a:hover { background-color: #0C447C !important; }
 
     /* Feedback modal – submits via FormSubmit.co's AJAX endpoint, no
        backend of our own needed. */
@@ -462,7 +465,7 @@
     }
     .feedback-modal {
       position: relative;
-      background: #fff;
+      background: #fdfcf9;
       border-radius: 12px;
       padding: 24px;
       max-width: 340px;
@@ -483,10 +486,10 @@
       font-size: 22px;
       line-height: 1;
       cursor: pointer;
-      color: #9ca3af;
+      color: #9d98a8;
       padding: 4px 6px;
     }
-    .feedback-modal-close:hover { color: #374151; }
+    .feedback-modal-close:hover { color: #3d3947; }
     #feedback-form { display: flex; flex-direction: column; gap: 10px; }
     #feedback-message { resize: vertical; min-height: 90px; font-family: inherit; }
     #feedback-status { margin-top: 10px; font-size: 13px; text-align: center; display: none; }
@@ -513,7 +516,7 @@
       height: 30px;
       border-radius: 10px 10px 0 0;
       border: none;
-      background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+      background: linear-gradient(135deg, #378ADD, #185FA5);
       box-shadow: 0 -2px 8px rgba(0,0,0,0.28);
       cursor: pointer;
       transition: bottom 0.25s ease, box-shadow 0.15s ease;
@@ -650,22 +653,7 @@
 
   <div class="brand">
     <div class="brand-row">
-      <svg width="34" height="34" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-        <defs>
-          <linearGradient id="logoBg" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stop-color="#3b82f6"/>
-            <stop offset="100%" stop-color="#1d4ed8"/>
-          </linearGradient>
-        </defs>
-        <rect width="32" height="32" rx="9" fill="url(#logoBg)"/>
-        <circle cx="22" cy="10" r="4" fill="#fbbf24"/>
-        <path d="M3 25 L12 11 L16.5 17 L21 9 L29 25 Z" fill="#eff6ff"/>
-        <path d="M3 25 L12 11 L16.5 17 L13.7 21 L9 25 Z" fill="#bfdbfe"/>
-        <g stroke="#fbbf24" stroke-width="1.4" stroke-linecap="round">
-          <path d="M12 11 L8.5 6.5"/>
-          <path d="M12 11 L4.5 8.5" stroke-dasharray="1.6 2.2"/>
-        </g>
-      </svg>
+      <img src="favicon.svg" width="34" height="34" alt="">
       <h1>Visible From</h1>
     </div>
     <div class="brand-toolbar">
@@ -748,6 +736,7 @@
   </button>
 
   <div id="footer">
+    <a class="home-link" href="https://www.murbach.eu/">← All apps</a><br>
     <span id="footer-elevation-label">Elevation:</span>
     <a href="https://registry.opendata.aws/terrain-tiles/" target="_blank">Terrarium DEM</a>
     (AWS Open Data) &middot;
