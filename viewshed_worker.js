@@ -9,7 +9,7 @@ self.onmessage = function (e) {
     const {
         elev: elevBuf, pw: pwIn, ph: phIn,
         xtMin, ytMin, xtMax, ytMax,
-        peakLat, peakLon,
+        peakLat, peakLon, peakElevOverride,
         subsample, outSize
     } = e.data;
     const elevIn = new Int16Array(elevBuf);
@@ -58,7 +58,10 @@ self.onmessage = function (e) {
                 if (h > peakElevRaw) peakElevRaw = h;
             }
         }
-        const peakElev = peakElevRaw + 50;
+        // The user can override the auto-detected height when it's off; the
+        // auto value is still reported back so they can return to it.
+        const autoPeakElev = peakElevRaw + 50;
+        const peakElev = Number.isFinite(peakElevOverride) ? peakElevOverride : autoPeakElev;
 
         // Effective pixel size after downsampling
         const pxM = pixelMetres(peakLat) * subsample;
@@ -156,7 +159,7 @@ self.onmessage = function (e) {
                            west:  nwCorner.lon,  east: seCorner.lon };
 
         self.postMessage(
-            { type: 'result', buffer: buf.buffer, width: outW, height: outH, bounds, peakElev },
+            { type: 'result', buffer: buf.buffer, width: outW, height: outH, bounds, peakElev, autoPeakElev },
             [buf.buffer]
         );
 

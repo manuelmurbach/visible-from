@@ -29,6 +29,10 @@ const STRINGS = {
         mapClickOption: 'Clicked on map',
         noPeakSelected: 'No peak selected',
         detectedOnCompute: 'Elevation…',
+        heightLabel: 'Height of selected point in metres',
+        heightLower: 'Lower by {step} m',
+        heightRaise: 'Raise by {step} m',
+        heightReset: 'Back to auto-detected height',
         dateTimeLabel: 'Date & Time (your local time)',
         wheelHint: 'Swipe, drag or scroll a wheel to change it. Double-tap/click to jump to now.',
         idle: '',
@@ -52,6 +56,7 @@ const STRINGS = {
         renderingOverlay: 'Rendering overlay…',
         computingShadows: 'Computing shadows…',
         doneViewshed: 'Done. Peak elevation: {elev} m (auto-detected from DEM + 50 m buffer)',
+        doneViewshedManual: 'Done. Peak elevation: {elev} m (set manually)',
         doneShadow: 'Done. Sun: {az}° az, {alt}° alt',
         sunLoadingTiles: 'Sun: {az}° az, {alt}° alt – loading tiles…',
         sunBelowHorizon: 'Sun is below the horizon – everything is in shadow.',
@@ -84,6 +89,10 @@ const STRINGS = {
         mapClickOption: 'Auf Karte geklickt',
         noPeakSelected: 'Kein Gipfel ausgewählt',
         detectedOnCompute: 'Höhe…',
+        heightLabel: 'Höhe des gewählten Punkts in Metern',
+        heightLower: '{step} m tiefer',
+        heightRaise: '{step} m höher',
+        heightReset: 'Zurück zur automatisch erkannten Höhe',
         dateTimeLabel: 'Datum & Zeit (deine Ortszeit)',
         wheelHint: 'Wische, ziehe oder scrolle an einem Rad, um es zu ändern. Doppeltippen/-klicken springt zu jetzt.',
         idle: '',
@@ -107,6 +116,7 @@ const STRINGS = {
         renderingOverlay: 'Zeichne Overlay…',
         computingShadows: 'Berechne Schatten…',
         doneViewshed: 'Fertig. Gipfelhöhe: {elev} m (automatisch erkannt aus DEM + 50 m Puffer)',
+        doneViewshedManual: 'Fertig. Gipfelhöhe: {elev} m (manuell gesetzt)',
         doneShadow: 'Fertig. Sonne: {az}° Az, {alt}° Höhe',
         sunLoadingTiles: 'Sonne: {az}° Az, {alt}° Höhe – lade Kacheln…',
         sunBelowHorizon: 'Die Sonne steht unter dem Horizont – alles liegt im Schatten.',
@@ -577,6 +587,7 @@ function updateModeButtonsAvailability() {
 updateModeButtonsAvailability();
 
 function setMode(mode) {
+    clearTimeout(heightTimer);
     currentMode = mode;
     document.getElementById('btn-visibility').classList.toggle('active', mode === 'visibility');
     document.getElementById('btn-shadow').classList.toggle('active', mode === 'shadow');
@@ -634,6 +645,7 @@ map.invalidateSize();
 // moved on to a different peak (which was overwriting the elevation field
 // with a stale value once the old computation finally finished).
 function abandonInFlightViewshed() {
+    clearTimeout(heightTimer);
     const wasRunning = document.getElementById('btn-cancel').style.display === 'block';
     vsToken++;
     if (viewshedWorker) { viewshedWorker.terminate(); viewshedWorker = null; }
@@ -655,7 +667,7 @@ function onMapClick(e) {
         .openPopup();
 
     document.getElementById('vis-coords').textContent = fmtCoord(lat, lng);
-    document.getElementById('peak-elev').value = '';
+    updateHeightControls();
     // Otherwise the dropdown keeps showing whatever preset was last picked
     // (e.g. "Mont Blanc") even though the actual selection has moved to
     // wherever was just clicked.
@@ -683,12 +695,70 @@ function selectPreset(key) {
 
     document.getElementById('vis-coords').textContent =
         `${peak.name} — ${fmtCoord(peak.lat, peak.lon)}`;
-    document.getElementById('peak-elev').value = '';
+    updateHeightControls();
     if (tilesReady) computeViewshed();
 
     map.setView([peak.lat, peak.lon], map.getZoom());
 }
 window.selectPreset = selectPreset;
+
+// ---------------------------------------------------------------------------
+// Height of the selected point – auto-detected by the viewshed worker, but
+// adjustable afterwards since the DEM-based guess can be too high or too low.
+// Stored on selectedPeak itself (autoElev / elevOverride), so picking another
+// point automatically starts from its own auto value again.
+// ---------------------------------------------------------------------------
+
+const HEIGHT_STEP_M = 10;
+const HEIGHT_MAX_M = 9000;
+// Lets several quick -/+ taps collapse into a single recompute.
+const HEIGHT_RECOMPUTE_DELAY_MS = 500;
+let heightTimer = null;
+
+function currentHeight() {
+    return selectedPeak?.elevOverride ?? selectedPeak?.autoElev ?? null;
+}
+
+function updateHeightControls() {
+    const h = currentHeight();
+    const input = document.getElementById('peak-elev');
+    // " m" suffix here since there's no separate label conveying units.
+    input.value = h == null ? '' : h + ' m';
+    input.disabled = h == null;
+    document.getElementById('btn-height-down').disabled = h == null;
+    document.getElementById('btn-height-up').disabled = h == null;
+    document.getElementById('btn-height-reset').hidden = selectedPeak?.elevOverride == null;
+}
+
+// metres = null returns to the auto-detected height.
+function setHeightOverride(metres) {
+    abandonInFlightViewshed(); // its result would be for the old height
+    selectedPeak.elevOverride =
+        metres == null ? null : Math.min(HEIGHT_MAX_M, Math.max(0, Math.round(metres)));
+    overlaySuppressed = false; // changing the height is a deliberate new trigger
+    updateHeightControls();
+    heightTimer = setTimeout(computeViewshed, HEIGHT_RECOMPUTE_DELAY_MS);
+}
+
+function stepHeight(direction) {
+    const h = currentHeight();
+    if (h != null) setHeightOverride(h + direction * HEIGHT_STEP_M);
+}
+window.stepHeight = stepHeight;
+
+function resetHeight() {
+    if (selectedPeak) setHeightOverride(null);
+}
+window.resetHeight = resetHeight;
+
+// Typed value, e.g. "4017", "4017 m" or "4'017" – anything else is reverted.
+function onHeightInput(text) {
+    const digits = text.replace(/[\s'’]|m$/gi, '');
+    const h = currentHeight();
+    if (h != null && /^\d{1,5}$/.test(digits) && Number(digits) !== h) setHeightOverride(Number(digits));
+    else updateHeightControls();
+}
+window.onHeightInput = onHeightInput;
 
 // ---------------------------------------------------------------------------
 // Status & progress
@@ -734,6 +804,7 @@ function applyResult({ buffer, width, height, bounds }) {
 }
 
 function cancelComputation() {
+    clearTimeout(heightTimer);
     vsToken++;     // invalidates any computeViewshed() still awaiting tiles
     shadowToken++; // invalidates any computeShadow() still awaiting tiles
     if (viewshedWorker) { viewshedWorker.terminate(); viewshedWorker = null; }
@@ -757,6 +828,7 @@ function clearOverlay() {
 // passive auto-recompute until a new trigger (peak pick or date/time
 // change) explicitly resumes it.
 function clearOverlayManually() {
+    clearTimeout(heightTimer);
     overlaySuppressed = true;
     clearOverlay();
 }
@@ -912,7 +984,8 @@ async function computeViewshed() {
     const cfg = CONFIG;
 
     // Tile range for viewshed area centred on peak
-    const lat = selectedPeak.lat, lon = selectedPeak.lon;
+    const peak = selectedPeak;
+    const lat = peak.lat, lon = peak.lon;
     const { xtMin, xtMax, ytMin, ytMax } = getViewshedTileRange(lat, lon);
 
     console.log('[app] viewshed tile range', { xtMin, xtMax, ytMin, ytMax });
@@ -951,11 +1024,11 @@ async function computeViewshed() {
             setStatus(d.key, null, 30 + d.percent * 0.7);
         } else if (d.type === 'result') {
             applyResult(d);
-            // " m" suffix here since there's no longer a separate label
-            // conveying units (the field's own placeholder + this value are
-            // now the only context for what the number means).
-            document.getElementById('peak-elev').value = Math.round(d.peakElev) + ' m';
-            setStatus('doneViewshed', { elev: Math.round(d.peakElev) }, 100);
+            peak.autoElev = Math.round(d.autoPeakElev);
+            // Don't overwrite a value the user is in the middle of typing.
+            if (document.activeElement !== document.getElementById('peak-elev')) updateHeightControls();
+            setStatus(peak.elevOverride == null ? 'doneViewshed' : 'doneViewshedManual',
+                { elev: Math.round(d.peakElev) }, 100);
             document.getElementById('btn-cancel').style.display = 'none';
         } else if (d.type === 'error') {
             setStatus('workerError', { message: d.message }, 0);
@@ -967,7 +1040,7 @@ async function computeViewshed() {
         {
             elev: mosaic.elev.buffer, pw: mosaic.pw, ph: mosaic.ph,
             xtMin, ytMin, xtMax, ytMax,
-            peakLat: lat, peakLon: lon,
+            peakLat: lat, peakLon: lon, peakElevOverride: peak.elevOverride,
             subsample: mosaic.subsample, outSize: cfg.outSize
         },
         [mosaic.elev.buffer]
@@ -1572,6 +1645,13 @@ function applyTranslations() {
     document.getElementById('peak-select-mapclick').textContent = t('mapClickOption');
     if (!selectedPeak) document.getElementById('vis-coords').textContent = t('noPeakSelected');
     document.getElementById('peak-elev').placeholder = t('detectedOnCompute');
+    for (const [id, key] of [['peak-elev', 'heightLabel'], ['btn-height-down', 'heightLower'],
+                             ['btn-height-up', 'heightRaise'], ['btn-height-reset', 'heightReset']]) {
+        const el = document.getElementById(id);
+        const label = t(key, { step: HEIGHT_STEP_M });
+        el.title = label;
+        el.setAttribute('aria-label', label);
+    }
 
     document.getElementById('label-datetime').textContent = t('dateTimeLabel');
     document.getElementById('wheel-hint').textContent = t('wheelHint');

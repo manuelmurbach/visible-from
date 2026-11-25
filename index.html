@@ -186,12 +186,23 @@
       color: #17151f;
     }
     input:focus, textarea:focus { outline: 2px solid #85B7EB; border-color: #85B7EB; }
-    input[readonly] {
-      background: #f1eee8;
+
+    /* Height of the selected point: [-] value [+] (reset) */
+    .height-row { display: flex; gap: 4px; }
+    .height-row input { flex: 1; min-width: 0; text-align: center; }
+    .height-row input:disabled { background: #f1eee8; color: #3d3947; }
+    .height-row button {
+      flex: 0 0 30px;
+      border: 1px solid #e2ddd3;
+      border-radius: 5px;
+      background: #f7f5f0;
       color: #3d3947;
-      cursor: default;
+      font-size: 16px;
+      cursor: pointer;
+      touch-action: manipulation; /* quick repeat taps must not zoom the page */
     }
-    input[readonly]:focus { outline: none; border-color: #e2ddd3; }
+    .height-row button[hidden] { display: none; }
+    .height-row button:disabled { opacity: 0.45; cursor: not-allowed; }
 
     select {
       width: 100%;
@@ -626,6 +637,8 @@
         flex-direction: column;
         gap: 8px;
       }
+      /* below 16px, iOS Safari zooms the page when the field is focused */
+      #peak-elev { font-size: 16px; padding-left: 2px; padding-right: 2px; }
     }
   </style>
 </head>
@@ -707,7 +720,14 @@
       </select>
       <div class="peak-info-col">
         <div class="coord-box" id="vis-coords">No peak selected</div>
-        <input type="text" id="peak-elev" placeholder="Elevation…" readonly>
+        <div class="height-row">
+          <button type="button" id="btn-height-down" onclick="stepHeight(-1)" disabled>&minus;</button>
+          <input type="text" id="peak-elev" placeholder="Elevation…" inputmode="numeric" enterkeyhint="done"
+                 autocomplete="off" onfocus="this.select()" onchange="onHeightInput(this.value)"
+                 onkeydown="if(event.key==='Enter') this.blur()" disabled>
+          <button type="button" id="btn-height-up" onclick="stepHeight(1)" disabled>+</button>
+          <button type="button" id="btn-height-reset" onclick="resetHeight()" hidden>&#8634;</button>
+        </div>
       </div>
     </div>
   </div>
